@@ -1,5 +1,5 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useState, useRef, useEffect } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { analyzeStock, type AnalysisResult } from "@/server/analyze.functions";
 import { Gauge } from "@/components/dashboard/Gauge";
@@ -11,17 +11,24 @@ import { RiskFactors } from "@/components/dashboard/RiskFactors";
 import { MacroBar } from "@/components/dashboard/MacroBar";
 import { AnalystIntelligence } from "@/components/dashboard/AnalystIntelligence";
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
+import { SettingsModal } from "@/components/dashboard/SettingsModal";
+import { CrossCheckPanel } from "@/components/dashboard/CrossCheckPanel";
+import { OwnershipPanel } from "@/components/dashboard/OwnershipPanel";
+import { UpgradesPanel } from "@/components/dashboard/UpgradesPanel";
+import { AIRiskPanel } from "@/components/dashboard/AIRiskPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fmtPrice, fmtPctRaw, fmtDate } from "@/lib/format";
+import { useSettings } from "@/lib/settings";
+import { cacheGet, cacheSet } from "@/lib/cache";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Stock Analysis Dashboard — Multi-Source Risk Intelligence" },
-      { name: "description", content: "Professional US-stock analysis with composite scoring, risk radar, fundamentals, and macro context." },
+      { name: "description", content: "Free, keyless US-stock analysis: Yahoo Finance, SEC EDGAR, FRED, Wikipedia and Claude-powered risk intelligence." },
       { property: "og:title", content: "Stock Analysis Dashboard" },
-      { property: "og:description", content: "Multi-source fundamental, technical, and risk analysis for US stocks." },
+      { property: "og:description", content: "Multi-source fundamental, technical and risk analysis for US stocks." },
     ],
   }),
   component: DashboardPage,
@@ -32,14 +39,23 @@ function DashboardPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [ticker, setTicker] = useState("AAPL");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const dashRef = useRef<HTMLDivElement>(null);
+  const [settings] = useSettings();
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
   }, [theme]);
 
   const mutation = useMutation({
-    mutationFn: (t: string) => analyzeStock({ data: { ticker: t } }),
+    mutationFn: async (t: string): Promise<AnalysisResult> => {
+      const ttl = settings.cacheMinutes * 60_000;
+      const cached = cacheGet<AnalysisResult>(`analysis:${t}`, ttl);
+      if (cached) return cached;
+      const fresh = await analyzeStock({ data: { ticker: t } });
+      cacheSet(`analysis:${t}`, fresh);
+      return fresh;
+    },
   });
 
   const onAnalyze = () => {
@@ -64,13 +80,12 @@ function DashboardPage() {
     const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
     const w = pdf.internal.pageSize.getWidth();
     const h = (canvas.height * w) / canvas.width;
-    let y = 0;
     const pageH = pdf.internal.pageSize.getHeight();
     if (h <= pageH) {
       pdf.addImage(img, "PNG", 0, 0, w, h);
     } else {
-      // multi-page
       let remaining = h;
+      let y = 0;
       while (remaining > 0) {
         pdf.addImage(img, "PNG", 0, y, w, h);
         remaining -= pageH;
@@ -109,12 +124,15 @@ function DashboardPage() {
               </h1>
             )}
             <p className="text-sm text-muted-foreground mt-1">
-              Multi-source risk intelligence · Fundamentals · Technicals · Macro context
+              Keyless multi-source risk intelligence · Yahoo Finance · SEC EDGAR · FRED · Wikipedia
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+            <Button variant="outline" size="sm" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} title="Toggle theme">
               {theme === "dark" ? "☀️" : "🌙"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} title="Settings">
+              ⚙️
             </Button>
             {result && (
               <Button variant="outline" size="sm" onClick={exportPDF}>
@@ -148,17 +166,20 @@ function DashboardPage() {
 
         <div ref={dashRef} className="space-y-8">
           {mutation.isPending && <LoadingSkeleton />}
-
-          {result && <DashboardContent result={result} />}
-
+          {result && <DashboardContent result={result} onOpenSettings={() => setSettingsOpen(true)} />}
           {!mutation.isPending && !result && (
             <div className="glass-card p-12 text-center">
               <div className="text-6xl mb-4">📊</div>
               <h2 className="text-xl font-semibold">Enter a ticker to begin</h2>
               <p className="text-sm text-muted-foreground mt-2">
-                Try <button onClick={() => { setTicker("AAPL"); }} className="text-primary underline">AAPL</button>,{" "}
-                <button onClick={() => { setTicker("MSFT"); }} className="text-primary underline">MSFT</button>, or{" "}
-                <button onClick={() => { setTicker("TSLA"); }} className="text-primary underline">TSLA</button>.
+                Try <button onClick={() => setTicker("AAPL")} className="text-primary underline">AAPL</button>,{" "}
+                <button onClick={() => setTicker("MSFT")} className="text-primary underline">MSFT</button>, or{" "}
+                <button onClick={() => setTicker("TSLA")} className="text-primary underline">TSLA</button>.
+              </p>
+              <p className="text-xs text-muted-foreground mt-4">
+                All data sources are free and keyless. Add an Anthropic API key in{" "}
+                <button onClick={() => setSettingsOpen(true)} className="text-primary underline">⚙️ Settings</button>{" "}
+                to enable Claude-powered risk analysis.
               </p>
             </div>
           )}
@@ -169,13 +190,13 @@ function DashboardPage() {
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Data Sources</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
             {[
-              { name: "Financial Modeling Prep", desc: "Fundamentals, ratios, analysts, insiders", k: "fmp" },
-              { name: "Yahoo Finance", desc: "Price, technicals, beta, short interest", k: "yahoo" },
-              { name: "Alpha Vantage", desc: "RSI / MACD backup", k: "alpha" },
-              { name: "SEC EDGAR", desc: "10-K / 10-Q / 8-K filings", k: "sec" },
-              { name: "FRED (St. Louis Fed)", desc: "Macro: rates, CPI", k: "fred" },
+              { name: "Yahoo Finance", desc: "16 modules: fundamentals, ESG, ownership, analysts", k: "yahoo" as const },
+              { name: "Yahoo Chart API", desc: "1y daily OHLCV → SMA, RSI, MACD, BB", k: "yahooChart" as const },
+              { name: "SEC EDGAR", desc: "10-K/Q/8-K filings + company facts cross-check", k: "sec" as const },
+              { name: "FRED (St. Louis Fed)", desc: "Fed Funds, 10Y, CPI, USD Idx, VIX (CSV)", k: "fred" as const },
+              { name: "Wikipedia", desc: "Company description fallback", k: "wiki" as const },
             ].map((s) => {
-              const ok = result?.sources?.[s.k as keyof typeof result.sources];
+              const ok = result?.sources?.[s.k];
               return (
                 <div key={s.k} className="glass-card p-3">
                   <div className="flex items-center justify-between">
@@ -192,13 +213,31 @@ function DashboardPage() {
           </p>
         </footer>
       </div>
+
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }
 
-function DashboardContent({ result }: { result: AnalysisResult }) {
+function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; onOpenSettings: () => void }) {
+  const [settings] = useSettings();
   const riskTone = result.composite >= 65 ? "success" : result.composite >= 35 ? "warning" : "danger";
   const riskLabel = result.composite >= 65 ? "🟢 Low Risk" : result.composite >= 35 ? "🟡 Medium Risk" : "🔴 High Risk";
+
+  // Trim payload sent to Claude — keep semantically rich fields only
+  const aiPayload = useMemo(() => ({
+    company: result.company,
+    price: result.price,
+    composite: result.composite,
+    cards: result.cards.map((c: any) => ({ id: c.id, title: c.title, score: c.score, indicators: c.indicators, extras: c.extras })),
+    radar: result.radar,
+    risks: result.risks,
+    macro: result.macro,
+    analyst: { ...result.analyst, upgrades: result.analyst.upgrades?.slice(0, 5) },
+    esg: result.esg,
+    crossCheck: result.crossCheck,
+    ownership: { heldPctInst: result.ownership.heldPctInst, heldPctInsiders: result.ownership.heldPctInsiders },
+  }), [result]);
 
   return (
     <>
@@ -215,6 +254,7 @@ function DashboardContent({ result }: { result: AnalysisResult }) {
               {result.company.industry && <span>· {result.company.industry}</span>}
               {result.company.country && <span>· {result.company.country}</span>}
               {result.company.exchange && <span>· {result.company.exchange}</span>}
+              {result.company.stateOfIncorporation && <span>· Inc. {result.company.stateOfIncorporation}</span>}
             </div>
 
             <div className="flex items-baseline gap-3 mt-4">
@@ -226,12 +266,19 @@ function DashboardContent({ result }: { result: AnalysisResult }) {
               )}
             </div>
 
+            {result.company.description && (
+              <p className="text-sm text-muted-foreground mt-4 leading-relaxed line-clamp-3">
+                {result.company.description}
+              </p>
+            )}
+
             <div className="mt-4 flex flex-wrap gap-2">
-              <SourceBadge name="FMP" ok={result.sources.fmp} />
               <SourceBadge name="Yahoo" ok={result.sources.yahoo} />
-              <SourceBadge name="Alpha" ok={result.sources.alpha} />
-              <SourceBadge name="SEC" ok={result.sources.sec} />
+              <SourceBadge name="Yahoo Chart" ok={result.sources.yahooChart} />
+              <SourceBadge name="SEC EDGAR" ok={result.sources.sec} />
+              <SourceBadge name="SEC Facts" ok={result.sources.secFacts} />
               <SourceBadge name="FRED" ok={result.sources.fred} />
+              <SourceBadge name="Wikipedia" ok={result.sources.wiki} />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               Last updated: {fmtDate(result.lastUpdated)} {new Date(result.lastUpdated).toLocaleTimeString()}
@@ -279,7 +326,7 @@ function DashboardContent({ result }: { result: AnalysisResult }) {
       {/* Section 2 — Risk panel */}
       <section className="glass-card p-6">
         <h2 className="text-xl font-bold mb-2">Section 2 · Risk Exposure Analysis</h2>
-        <p className="text-sm text-muted-foreground mb-6">Composite view of market, sector, financial, valuation, regulatory and liquidity risk.</p>
+        <p className="text-sm text-muted-foreground mb-6">Composite view across market, financial, valuation, regulatory, liquidity, sentiment and ESG axes.</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-2">
@@ -292,7 +339,7 @@ function DashboardContent({ result }: { result: AnalysisResult }) {
             </div>
           </div>
           <div className="lg:col-span-3">
-            <h3 className="font-semibold mb-3">Triggered Risk Factors</h3>
+            <h3 className="font-semibold mb-3">Triggered Risk Factors (rules-based)</h3>
             <RiskFactors risks={result.risks as any} />
           </div>
         </div>
@@ -303,9 +350,11 @@ function DashboardContent({ result }: { result: AnalysisResult }) {
           cpi={result.macro.cpi}
           vix={result.macro.vix}
           dxy={result.macro.dxy}
-          spyPerf30={result.macro.spyPerf30}
         />
       </section>
+
+      {/* Section 2B — AI risk intelligence */}
+      <AIRiskPanel ticker={result.ticker} payload={aiPayload} onOpenSettings={onOpenSettings} />
 
       {/* Section 3 — Analyst intelligence */}
       <section>
@@ -319,9 +368,31 @@ function DashboardContent({ result }: { result: AnalysisResult }) {
           nextEarnings={result.analyst.nextEarnings}
           nextEPSEst={result.analyst.nextEPSEst}
           filings={result.filings}
-          cik={result.company.cik ? String(result.company.cik) : null}
+          cik={result.company.cik || null}
+        />
+        <div className="mt-5">
+          <UpgradesPanel upgrades={result.analyst.upgrades || []} />
+        </div>
+      </section>
+
+      {/* Section 4 — Ownership */}
+      <section>
+        <h2 className="text-xl font-bold mb-4">Section 4 · Ownership & Insiders</h2>
+        <OwnershipPanel
+          topHolders={result.ownership.topHolders}
+          heldPctInst={result.ownership.heldPctInst}
+          heldPctInsiders={result.ownership.heldPctInsiders}
+          recentInsiderTx={result.ownership.recentInsiderTx}
         />
       </section>
+
+      {/* Section 5 — Cross-validation */}
+      {settings.showSecCrossCheck && (
+        <section>
+          <h2 className="text-xl font-bold mb-4">Section 5 · Yahoo vs SEC EDGAR</h2>
+          <CrossCheckPanel data={result.crossCheck} hasSec={result.sources.secFacts} />
+        </section>
+      )}
     </>
   );
 }
