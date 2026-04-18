@@ -12,6 +12,63 @@ const UA = {
   Accept: "application/json, text/plain, */*",
 };
 
+// Yahoo's quoteSummary endpoint now requires a crumb + matching cookie.
+// We pretend to be a real browser to get them, then cache for an hour.
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+let yahooAuth: { cookie: string; crumb: string; at: number } | null = null;
+const YAHOO_AUTH_TTL = 60 * 60 * 1000;
+
+async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null> {
+  const now = Date.now();
+  if (yahooAuth && now - yahooAuth.at < YAHOO_AUTH_TTL) {
+    return { cookie: yahooAuth.cookie, crumb: yahooAuth.crumb };
+  }
+  try {
+    // Step 1: hit finance.yahoo.com to get session cookies (A1, A3, etc.)
+    const seed = await fetch("https://finance.yahoo.com/quote/AAPL/", {
+      headers: {
+        "User-Agent": BROWSER_UA,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      redirect: "follow",
+    });
+    const setCookies: string[] = [];
+    // Cloudflare Workers exposes set-cookie via getSetCookie() when available
+    const anyHeaders = seed.headers as any;
+    if (typeof anyHeaders.getSetCookie === "function") {
+      for (const c of anyHeaders.getSetCookie()) setCookies.push(c);
+    } else {
+      const sc = seed.headers.get("set-cookie");
+      if (sc) setCookies.push(sc);
+    }
+    const cookie = setCookies
+      .map((c) => c.split(";")[0])
+      .filter(Boolean)
+      .join("; ");
+    if (!cookie) return null;
+
+    // Step 2: fetch the crumb using those cookies
+    const crumbRes = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+      headers: {
+        "User-Agent": BROWSER_UA,
+        Accept: "*/*",
+        Cookie: cookie,
+      },
+    });
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumb || crumb.length > 64 || crumb.includes("<") || crumb.toLowerCase().includes("too many")) {
+      return null;
+    }
+    yahooAuth = { cookie, crumb, at: now };
+    return { cookie, crumb };
+  } catch {
+    return null;
+  }
+}
+
 async function safeFetch(
   url: string,
   init?: RequestInit,
@@ -36,10 +93,33 @@ async function safeFetch(
 // Yahoo quoteSummary — call modules in small batches (Yahoo limits)
 // ─────────────────────────────────────────────────────────────────
 async function yahooSummary(ticker: string, modules: string[]) {
-  const url = `${YAHOO}/v10/finance/quoteSummary/${encodeURIComponent(
+  const auth = await getYahooAuth();
+  const headers: Record<string, string> = {
+    "User-Agent": BROWSER_UA,
+    Accept: "application/json, text/plain, */*",
+  };
+  let url = `${YAHOO}/v10/finance/quoteSummary/${encodeURIComponent(
     ticker,
   )}?modules=${modules.join(",")}&corsDomain=finance.yahoo.com`;
-  const res = await safeFetch(url);
+  if (auth) {
+    url += `&crumb=${encodeURIComponent(auth.crumb)}`;
+    headers.Cookie = auth.cookie;
+  }
+  const res = await safeFetch(url, { headers });
+  // If unauthorized (crumb expired), clear cache and retry once
+  if (!res.ok && (res.status === 401 || res.status === 403)) {
+    yahooAuth = null;
+    const auth2 = await getYahooAuth();
+    if (auth2) {
+      const url2 = `${YAHOO}/v10/finance/quoteSummary/${encodeURIComponent(
+        ticker,
+      )}?modules=${modules.join(",")}&corsDomain=finance.yahoo.com&crumb=${encodeURIComponent(auth2.crumb)}`;
+      const res2 = await safeFetch(url2, {
+        headers: { "User-Agent": BROWSER_UA, Accept: "application/json", Cookie: auth2.cookie },
+      });
+      return res2.data?.quoteSummary?.result?.[0] || null;
+    }
+  }
   return res.data?.quoteSummary?.result?.[0] || null;
 }
 
