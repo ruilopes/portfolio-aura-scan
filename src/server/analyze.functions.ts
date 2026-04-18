@@ -9,22 +9,13 @@ import {
 } from "./sources/yahoo.server";
 import { fetchFMPBundle } from "./sources/fmp.server";
 import { fetchAVBundle, avNum } from "./sources/alpha-vantage.server";
-import { fetchSECBundle } from "./sources/sec.server";
+import { fetchSECBundle, checkFilingTimeliness } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
 import { fetchWikiSummary } from "./sources/wiki.server";
 import { sma, rsi, macdCalc, bollinger, histVolatility } from "./sources/technicals.server";
 import { pick, SourceLedger, setYahooDemoted, type Indicator } from "./sources/waterfall.server";
 
 // ────────────────────── small utility helpers ──────────────────────
-type Confidence = "high" | "medium" | "low";
-function confidenceFor(a: number | null, b: number | null): Confidence {
-  if (a == null && b == null) return "low";
-  if (a == null || b == null) return "medium";
-  if (a === 0 && b === 0) return "high";
-  const denom = Math.max(Math.abs(a), Math.abs(b));
-  if (denom === 0) return "high";
-  return Math.abs(a - b) / denom <= 0.05 ? "high" : "low";
-}
 const score = (v: number | null, breaks: { lt: number; s: number }[]) => {
   if (v == null || !isFinite(v)) return 5;
   for (const b of breaks) if (v < b.lt) return b.s;
@@ -576,19 +567,8 @@ export const analyzeStock = createServerFn({ method: "POST" })
             primaryDoc: "",
           }));
 
-    // ────────────── Cross-validation (Yahoo vs SEC) ──────────────
-    const yahooAnnualRevenue = yRaw(YincH[0]?.totalRevenue);
-    const yahooAnnualNetIncome = yRaw(YincH[0]?.netIncome);
-    const yahooAssets = yRaw(YbalH[0]?.totalAssets);
-    const yahooLiabilities = yRaw(YbalH[0]?.totalLiab);
-    const yahooEquity = yRaw(YbalH[0]?.totalStockholderEquity);
-    const crossCheck = {
-      revenue: { yahoo: yahooAnnualRevenue, sec: sec?.facts?.revenues ?? null, confidence: confidenceFor(yahooAnnualRevenue, sec?.facts?.revenues ?? null) },
-      netIncome: { yahoo: yahooAnnualNetIncome, sec: sec?.facts?.netIncome ?? null, confidence: confidenceFor(yahooAnnualNetIncome, sec?.facts?.netIncome ?? null) },
-      assets: { yahoo: yahooAssets, sec: sec?.facts?.assets ?? null, confidence: confidenceFor(yahooAssets, sec?.facts?.assets ?? null) },
-      liabilities: { yahoo: yahooLiabilities, sec: sec?.facts?.liabilities ?? null, confidence: confidenceFor(yahooLiabilities, sec?.facts?.liabilities ?? null) },
-      equity: { yahoo: yahooEquity, sec: sec?.facts?.equity ?? null, confidence: confidenceFor(yahooEquity, sec?.facts?.equity ?? null) },
-    };
+    // ────────────── SEC filing timeliness ──────────────
+    const filingTimeliness = checkFilingTimeliness(sec?.submissions || null);
 
     // ────────────── Company info (waterfall) ──────────────
     const companyName = pick<string>([
