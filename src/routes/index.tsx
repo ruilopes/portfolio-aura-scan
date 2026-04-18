@@ -342,10 +342,12 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
             )}
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />
-              <SourceBadge name="Yahoo Chart" ok={result.sourceStatus.yahooChart} />
+              <SourceBadge name="FMP" ok={result.sourceStatus.fmp} />
+              <SourceBadge name="Alpha Vantage" ok={result.sourceStatus.av} />
               <SourceBadge name="SEC EDGAR" ok={result.sourceStatus.sec} />
               <SourceBadge name="FRED" ok={result.sourceStatus.fred} />
+              <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />
+              <SourceBadge name="Yahoo Chart" ok={result.sourceStatus.yahooChart} />
               <SourceBadge name="Wikipedia" ok={result.sourceStatus.wiki} />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
