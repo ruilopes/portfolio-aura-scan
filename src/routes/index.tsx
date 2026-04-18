@@ -12,7 +12,7 @@ import { MacroBar } from "@/components/dashboard/MacroBar";
 import { AnalystIntelligence } from "@/components/dashboard/AnalystIntelligence";
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { SettingsModal } from "@/components/dashboard/SettingsModal";
-import { CrossCheckPanel } from "@/components/dashboard/CrossCheckPanel";
+
 import { OwnershipPanel } from "@/components/dashboard/OwnershipPanel";
 import { UpgradesPanel } from "@/components/dashboard/UpgradesPanel";
 import { AIRiskPanel } from "@/components/dashboard/AIRiskPanel";
@@ -303,7 +303,6 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
     risks: result.risks,
     macro: result.macro,
     analyst: { ...result.analyst, upgrades: result.analyst.upgrades?.slice(0, 5) },
-    crossCheck: result.crossCheck,
     ownership: { heldPctInst: result.ownership.heldPctInst, heldPctInsiders: result.ownership.heldPctInsiders },
   }), [result]);
 
@@ -459,13 +458,7 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
         />
       </section>
 
-      {/* Section 5 — Cross-validation */}
-      {settings.showSecCrossCheck && (
-        <section>
-          <h2 className="text-xl font-bold mb-4">Section 5 · Yahoo vs SEC EDGAR</h2>
-          <CrossCheckPanel data={result.crossCheck} hasSec={result.sourceStatus.sec} />
-        </section>
-      )}
+    
     </>
   );
 }
