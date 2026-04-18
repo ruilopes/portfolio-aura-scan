@@ -48,19 +48,29 @@ function DashboardPage() {
   }, [theme]);
 
   const mutation = useMutation({
-    mutationFn: async (t: string): Promise<AnalysisResult> => {
+    mutationFn: async (opts: { ticker: string; forceYahooRetry?: boolean }): Promise<AnalysisResult> => {
       const ttl = settings.cacheMinutes * 60_000;
-      const cached = cacheGet<AnalysisResult>(`analysis:${t}`, ttl);
-      if (cached) return cached;
-      const fresh = await analyzeStock({ data: { ticker: t } });
-      cacheSet(`analysis:${t}`, fresh);
+      // Bypass cache when manually retrying Yahoo.
+      if (!opts.forceYahooRetry) {
+        const cached = cacheGet<AnalysisResult>(`analysis:${opts.ticker}`, ttl);
+        if (cached) return cached;
+      }
+      const fresh = await analyzeStock({
+        data: { ticker: opts.ticker, forceYahooRetry: opts.forceYahooRetry },
+      });
+      cacheSet(`analysis:${opts.ticker}`, fresh);
       return fresh;
     },
   });
 
   const onAnalyze = () => {
     const t = ticker.trim().toUpperCase();
-    if (t) mutation.mutate(t);
+    if (t) mutation.mutate({ ticker: t });
+  };
+
+  const onRetryYahoo = () => {
+    const t = (mutation.data?.ticker || ticker).trim().toUpperCase();
+    if (t) mutation.mutate({ ticker: t, forceYahooRetry: true });
   };
 
   const result = mutation.data;
