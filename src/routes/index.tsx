@@ -176,7 +176,7 @@ function DashboardPage() {
 
         {/* Yahoo rate-limit banner */}
         {result?.sourceStatus?.yahooRateLimited && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
             <span>
               ⚠️ Yahoo Finance is currently rate-limited — data is being served from
               FMP &amp; Alpha Vantage.
@@ -186,7 +186,7 @@ function DashboardPage() {
               variant="outline"
               onClick={onRetryYahoo}
               disabled={mutation.isPending}
-              className="border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+              className="border-warning/40 text-warning hover:bg-warning/20"
             >
               {mutation.isPending ? "Retrying…" : "Retry Yahoo"}
             </Button>
