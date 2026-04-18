@@ -109,7 +109,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const YinstOwn = yahoo?.institutionOwnership?.ownershipList || [];
     const YinsiderTx = yahoo?.insiderTransactions?.transactions || [];
     const Ycal = yahoo?.calendarEvents || {};
-    const Yesg = yahoo?.esgScores || {};
     const YsecFilings = yahoo?.secFilings?.filings || [];
 
     const FMPp = fmp?.profile || null;
@@ -549,16 +548,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
             source: "FMP",
           }));
 
-    // ────────────── ESG (Yahoo only) ──────────────
-    const esgData = {
-      total: yRaw(Yesg?.totalEsg),
-      env: yRaw(Yesg?.environmentScore),
-      social: yRaw(Yesg?.socialScore),
-      gov: yRaw(Yesg?.governanceScore),
-      perf: Yesg?.esgPerformance || null,
-      controversy: yRaw(Yesg?.highestControversy),
-    };
-
     // ────────────── Earnings calendar ──────────────
     const nextEarnings = Ycal?.earnings?.earningsDate?.[0]?.fmt || null;
     const nextEPSEst = pick<number>([
@@ -736,12 +725,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
     ];
     const card6Score = card6Sub.reduce((a, b) => a + b.s, 0) / card6Sub.length;
 
-    const card7Sub = [
-      { k: "Total ESG Risk", v: esgData.total, s: esgData.total == null ? 5 : esgData.total < 15 ? 10 : esgData.total < 25 ? 7 : esgData.total < 35 ? 4 : 1, source: esgData.total != null ? "Yahoo" : null },
-      { k: "Controversy Level", v: esgData.controversy, s: esgData.controversy == null ? 5 : esgData.controversy <= 1 ? 10 : esgData.controversy <= 2 ? 7 : esgData.controversy <= 3 ? 4 : 1, source: esgData.controversy != null ? "Yahoo" : null },
-    ];
-    const card7Score = card7Sub.reduce((a, b) => a + b.s, 0) / card7Sub.length;
-
     const cards = [
       { id: "valuation", title: "Valuation", weight: 22, score: card1Score, indicators: card1Sub, source: "Waterfall", extras: { marketCap: marketCap.value, ps: ps.value, priceToBook: priceToBook.value, enterpriseValue: enterpriseValue.value } },
       { id: "quality", title: "Financial Quality", weight: 22, score: card2Score, indicators: card2Sub, source: "Waterfall", extras: { opMargin: opMargin.value, profitMargins: profitMargins.value, roa: roa.value, currentRatio: currentRatio.value, quickRatio: quickRatio.value, freeCashflow: freeCashflow.value, totalCash: totalCash.value, totalDebt: totalDebt.value, revenuePerShare: revenuePerShare.value, eps: eps.value } },
@@ -749,7 +732,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
       { id: "technical", title: "Momentum / Technical", weight: 10, score: card4Score, indicators: card4Sub, source: "computed", extras: { macd: macdVal.value, priceVs50, pos52w, fiftyDayAvg: fiftyDayAvg.value, twoHundredDayAvg: twoHundredDayAvg.value, bollinger: bb.value, histVol: histVol.value } },
       { id: "sentiment", title: "Sentiment", weight: 10, score: card5Score, indicators: card5Sub, source: "Waterfall", extras: { totalAnalysts, consensusLabel, targetPrice: targetPrice.value, shortRatio: shortRatio.value, heldPctInst: heldPctInst.value, heldPctInsiders: heldPctInsiders.value } },
       { id: "macro", title: "Risk Metrics", weight: 10, score: card6Score, indicators: card6Sub, source: "Waterfall", extras: { histVol: histVol.value, avgVol: avgVol.value, avgVol10: avgVol10.value } },
-      { id: "esg", title: "ESG", weight: 8, score: card7Score, indicators: card7Sub, source: "Yahoo ESG", extras: { env: esgData.env, social: esgData.social, gov: esgData.gov, perf: esgData.perf } },
     ];
 
     const composite = Math.round(
@@ -771,7 +753,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
       return 1;
     })();
     const sentimentRisk = shortPct.value != null ? Math.min(10, shortPct.value * 50) : 5;
-    const esgRisk = esgData.total != null ? Math.min(10, esgData.total / 4) : 5;
     const radar = [
       { axis: "Market", value: +marketRisk.toFixed(1) },
       { axis: "Financial", value: +finRisk.toFixed(1) },
@@ -779,7 +760,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
       { axis: "Regulatory", value: +regRisk.toFixed(1) },
       { axis: "Liquidity", value: +liquidityRisk.toFixed(1) },
       { axis: "Sentiment", value: +sentimentRisk.toFixed(1) },
-      { axis: "ESG", value: +esgRisk.toFixed(1) },
     ];
 
     // ────────────── Heuristic risks (until AI runs) ──────────────
@@ -794,7 +774,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
     if (shortPct.value != null && shortPct.value > 0.1) risks.push({ category: "Sentiment", label: "Elevated Short Interest", description: `${(shortPct.value * 100).toFixed(1)}% of float sold short; bearish positioning.`, severity: shortPct.value > 0.2 ? "high" : "medium", source: shortPct.source || "Yahoo" });
     const adv = (avgVol10.value || 0) * (currentPrice.value || 0);
     if (adv && adv < 10e6) risks.push({ category: "Liquidity", label: "Low Liquidity", description: `Avg daily $ volume of ~$${(adv / 1e6).toFixed(1)}M makes large positions hard to exit.`, severity: "medium", source: "Yahoo" });
-    if (esgData.controversy != null && esgData.controversy >= 3) risks.push({ category: "ESG", label: "ESG Controversy", description: `Yahoo ESG controversy level ${esgData.controversy}/5 — material reputational/regulatory risk.`, severity: esgData.controversy >= 4 ? "high" : "medium", source: "Yahoo ESG" });
 
     const positives: string[] = [];
     const negatives: string[] = [];
@@ -860,7 +839,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
       radar,
       risks,
       crossCheck,
-      esg: esgData,
       macro,
       analyst: {
         ratings: YrecTrend.slice(0, 6).map((rt: any) => ({

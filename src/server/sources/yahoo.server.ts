@@ -39,7 +39,6 @@ export type YahooBundle = {
   insiderHolders?: any;
   insiderTransactions?: any;
   calendarEvents?: any;
-  esgScores?: any;
   secFilings?: any;
 };
 
@@ -119,7 +118,6 @@ export async function fetchYahooBundle(ticker: string): Promise<YahooBundle> {
     "insiderHolders",
     "insiderTransactions",
     "calendarEvents",
-    "esgScores",
     "secFilings",
   ];
   const [a, b, c] = await Promise.allSettled([
