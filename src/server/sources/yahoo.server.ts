@@ -144,6 +144,7 @@ export type YahooChart = {
 };
 
 export async function fetchYahooChart(ticker: string): Promise<YahooChart | null> {
+  if (yahooRateLimited) return null;
   try {
     const url = `${YAHOO}/v8/finance/chart/${encodeURIComponent(
       ticker,
@@ -151,6 +152,11 @@ export async function fetchYahooChart(ticker: string): Promise<YahooChart | null
     const res = await fetch(url, {
       headers: { "User-Agent": YAHOO_BROWSER_UA, Accept: "application/json" },
     });
+    if (res.status === 429) {
+      yahooRateLimited = true;
+      console.log(`[Yahoo Chart] ${ticker} → 429, demoting Yahoo for session`);
+      return null;
+    }
     if (!res.ok) return null;
     const json = await res.json();
     const result = json?.chart?.result?.[0];
