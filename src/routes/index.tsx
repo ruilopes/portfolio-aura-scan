@@ -303,7 +303,6 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
     risks: result.risks,
     macro: result.macro,
     analyst: { ...result.analyst, upgrades: result.analyst.upgrades?.slice(0, 5) },
-    esg: result.esg,
     crossCheck: result.crossCheck,
     ownership: { heldPctInst: result.ownership.heldPctInst, heldPctInsiders: result.ownership.heldPctInsiders },
   }), [result]);
@@ -396,7 +395,7 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
       {/* Section 2 — Risk panel */}
       <section className="glass-card p-6">
         <h2 className="text-xl font-bold mb-2">Section 2 · Risk Exposure Analysis</h2>
-        <p className="text-sm text-muted-foreground mb-6">Composite view across market, financial, valuation, regulatory, liquidity, sentiment and ESG axes.</p>
+        <p className="text-sm text-muted-foreground mb-6">Composite view across market, financial, valuation, regulatory, liquidity and sentiment axes.</p>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-2">

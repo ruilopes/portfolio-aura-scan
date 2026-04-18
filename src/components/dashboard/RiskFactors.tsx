@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 const ICONS: Record<string, string> = {
   Market: "📈", Sector: "🏭", Valuation: "💰", Financial: "💳",
   Earnings: "📊", Regulatory: "⚖️", Geopolitical: "🌍",
-  Sentiment: "💬", Liquidity: "💧", ESG: "🌱",
+  Sentiment: "💬", Liquidity: "💧",
 };
 
 const TONE: Record<string, string> = {
