@@ -174,6 +174,25 @@ function DashboardPage() {
           )}
         </section>
 
+        {/* Yahoo rate-limit banner */}
+        {result?.sourceStatus?.yahooRateLimited && (
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <span>
+              ⚠️ Yahoo Finance is currently rate-limited — data is being served from
+              FMP &amp; Alpha Vantage.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRetryYahoo}
+              disabled={mutation.isPending}
+              className="border-amber-500/40 text-amber-200 hover:bg-amber-500/20"
+            >
+              {mutation.isPending ? "Retrying…" : "Retry Yahoo"}
+            </Button>
+          </div>
+        )}
+
         <div ref={dashRef} className="space-y-8">
           {mutation.isPending && <LoadingSkeleton />}
           {result && <DashboardContent result={result} onOpenSettings={() => setSettingsOpen(true)} />}
