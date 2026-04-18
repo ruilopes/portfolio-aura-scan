@@ -47,9 +47,7 @@ function mergeCookies(existing: string, fromHeaders: string[]): string {
 
 async function fetchAuth(): Promise<{ cookie: string; crumb: string } | null> {
   try {
-    // Step 1 — fc.yahoo.com is a tiny endpoint that always returns Yahoo session
-    // cookies (A1, A3) without a consent wall. Some regions return 404 for the
-    // body but still set cookies on the response.
+    console.log("[YahooAuth] Starting crumb handshake");
     let cookie = "";
     const seedRes = await fetch("https://fc.yahoo.com", {
       method: "GET",
@@ -59,8 +57,15 @@ async function fetchAuth(): Promise<{ cookie: string; crumb: string } | null> {
         "Accept-Language": "en-US,en;q=0.9",
       },
       redirect: "manual",
-    }).catch(() => null);
-    if (seedRes) cookie = mergeCookies(cookie, readSetCookies(seedRes.headers));
+    }).catch((e) => {
+      console.log("[YahooAuth] fc.yahoo.com fetch threw:", e?.message);
+      return null;
+    });
+    if (seedRes) {
+      const sc = readSetCookies(seedRes.headers);
+      console.log("[YahooAuth] fc.yahoo.com status:", seedRes.status, "set-cookies:", sc.length);
+      cookie = mergeCookies(cookie, sc);
+    }
 
     // Step 2 — fall back to the public quote page which also drops the same
     // cookies. We follow redirects manually so we can collect cookies from each
@@ -89,9 +94,12 @@ async function fetchAuth(): Promise<{ cookie: string; crumb: string } | null> {
       }
     }
 
-    if (!cookie) return null;
+    if (!cookie) {
+      console.log("[YahooAuth] No cookie obtained — aborting");
+      return null;
+    }
+    console.log("[YahooAuth] Cookie jar size (chars):", cookie.length);
 
-    // Step 3 — request the crumb. We pass the accumulated cookie jar.
     const crumbRes = await fetch(
       "https://query1.finance.yahoo.com/v1/test/getcrumb",
       {
@@ -104,6 +112,12 @@ async function fetchAuth(): Promise<{ cookie: string; crumb: string } | null> {
       },
     );
     const crumb = (await crumbRes.text()).trim();
+    console.log(
+      "[YahooAuth] getcrumb status:",
+      crumbRes.status,
+      "body[0..200]:",
+      crumb.slice(0, 200),
+    );
     if (
       !crumb ||
       crumb.length > 64 ||
@@ -111,10 +125,13 @@ async function fetchAuth(): Promise<{ cookie: string; crumb: string } | null> {
       crumb.toLowerCase().includes("too many") ||
       crumb.toLowerCase().includes("error")
     ) {
+      console.log("[YahooAuth] Crumb rejected by validator");
       return null;
     }
+    console.log("[YahooAuth] ✓ crumb obtained");
     return { cookie, crumb };
-  } catch {
+  } catch (e: any) {
+    console.log("[YahooAuth] threw:", e?.message);
     return null;
   }
 }
