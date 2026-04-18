@@ -2,17 +2,23 @@ import { useEffect, useState } from "react";
 
 export interface AppSettings {
   anthropicKey: string;
+  fmpKey: string;
+  avKey: string;
   showConfidence: boolean;
   showSecCrossCheck: boolean;
-  cacheMinutes: 5 | 15 | 60;
+  showSourceAttribution: boolean;
+  cacheMinutes: 5 | 15 | 60 | 1440;
 }
 
 const KEY = "stockdash:settings";
 
 const DEFAULTS: AppSettings = {
   anthropicKey: "",
+  fmpKey: "",
+  avKey: "",
   showConfidence: true,
   showSecCrossCheck: true,
+  showSourceAttribution: true,
   cacheMinutes: 15,
 };
 
@@ -36,7 +42,6 @@ function write(s: AppSettings) {
   }
 }
 
-// Simple cross-component subscription
 const listeners = new Set<() => void>();
 
 export function useSettings(): [AppSettings, (patch: Partial<AppSettings>) => void] {
