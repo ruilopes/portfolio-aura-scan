@@ -51,16 +51,33 @@ async function rawQuoteSummary(
   try {
     const res = await fetch(url, { headers });
     if (res.status === 401 || res.status === 403) {
+      console.log(`[Yahoo] ${ticker} modules=${modules[0]}.. → ${res.status} (auth) retry=${retry}`);
       if (retry) {
         clearYahooAuth();
         return rawQuoteSummary(ticker, modules, false);
       }
       return null;
     }
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.log(
+        `[Yahoo] ${ticker} modules=${modules[0]}.. → ${res.status} body[0..200]:`,
+        body.slice(0, 200),
+      );
+      return null;
+    }
     const json = await res.json();
-    return json?.quoteSummary?.result?.[0] || null;
-  } catch {
+    const result = json?.quoteSummary?.result?.[0] || null;
+    const err = json?.quoteSummary?.error;
+    if (!result) {
+      console.log(
+        `[Yahoo] ${ticker} modules=${modules[0]}.. → 200 but empty result, error:`,
+        JSON.stringify(err)?.slice(0, 200),
+      );
+    }
+    return result;
+  } catch (e: any) {
+    console.log(`[Yahoo] ${ticker} modules=${modules[0]}.. threw:`, e?.message);
     return null;
   }
 }
