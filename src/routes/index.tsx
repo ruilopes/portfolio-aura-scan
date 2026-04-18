@@ -289,7 +289,7 @@ function DashboardPage() {
 }
 
 function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; onOpenSettings: () => void }) {
-  void useSettings;
+  
   const riskTone = result.composite >= 65 ? "success" : result.composite >= 35 ? "warning" : "danger";
   const riskLabel = result.composite >= 65 ? "🟢 Low Risk" : result.composite >= 35 ? "🟡 Medium Risk" : "🔴 High Risk";
 
