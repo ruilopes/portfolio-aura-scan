@@ -6,6 +6,19 @@ import { getYahooAuth, clearYahooAuth, YAHOO_BROWSER_UA } from "../yahoo-auth.se
 
 const YAHOO = "https://query1.finance.yahoo.com";
 
+// ─── Yahoo rate-limit guard ───────────────────────────────────────────────
+// Once Yahoo returns a 429 from the Cloudflare Worker IP range, every
+// subsequent request in this isolate is short-circuited until the user
+// manually clicks "Retry Yahoo" (which calls resetYahooRateLimit()).
+let yahooRateLimited = false;
+export function isYahooRateLimited(): boolean {
+  return yahooRateLimited;
+}
+export function resetYahooRateLimit(): void {
+  yahooRateLimited = false;
+  clearYahooAuth();
+}
+
 export type YahooBundle = {
   ok: boolean;
   // Raw quoteSummary modules
