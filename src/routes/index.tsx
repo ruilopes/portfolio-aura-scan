@@ -196,7 +196,7 @@ function DashboardPage() {
               { name: "FRED (St. Louis Fed)", desc: "Fed Funds, 10Y, CPI, USD Idx, VIX (CSV)", k: "fred" as const },
               { name: "Wikipedia", desc: "Company description fallback", k: "wiki" as const },
             ].map((s) => {
-              const ok = result?.sources?.[s.k];
+              const ok = result?.sourceStatus?.[s.k];
               return (
                 <div key={s.k} className="glass-card p-3">
                   <div className="flex items-center justify-between">
@@ -273,12 +273,11 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
             )}
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <SourceBadge name="Yahoo" ok={result.sources.yahoo} />
-              <SourceBadge name="Yahoo Chart" ok={result.sources.yahooChart} />
-              <SourceBadge name="SEC EDGAR" ok={result.sources.sec} />
-              <SourceBadge name="SEC Facts" ok={result.sources.secFacts} />
-              <SourceBadge name="FRED" ok={result.sources.fred} />
-              <SourceBadge name="Wikipedia" ok={result.sources.wiki} />
+              <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />
+              <SourceBadge name="Yahoo Chart" ok={result.sourceStatus.yahooChart} />
+              <SourceBadge name="SEC EDGAR" ok={result.sourceStatus.sec} />
+              <SourceBadge name="FRED" ok={result.sourceStatus.fred} />
+              <SourceBadge name="Wikipedia" ok={result.sourceStatus.wiki} />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               Last updated: {fmtDate(result.lastUpdated)} {new Date(result.lastUpdated).toLocaleTimeString()}
@@ -347,9 +346,13 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
         <MacroBar
           fedFunds={result.macro.fedFunds}
           treas10y={result.macro.treas10y}
+          treas2y={result.macro.treas2y}
+          yieldCurve={result.macro.yieldCurve}
           cpi={result.macro.cpi}
+          unemployment={result.macro.unemployment}
           vix={result.macro.vix}
           dxy={result.macro.dxy}
+          sp500={result.macro.sp500}
         />
       </section>
 
@@ -390,7 +393,7 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
       {settings.showSecCrossCheck && (
         <section>
           <h2 className="text-xl font-bold mb-4">Section 5 · Yahoo vs SEC EDGAR</h2>
-          <CrossCheckPanel data={result.crossCheck} hasSec={result.sources.secFacts} />
+          <CrossCheckPanel data={result.crossCheck} hasSec={result.sourceStatus.sec} />
         </section>
       )}
     </>
