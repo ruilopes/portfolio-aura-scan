@@ -755,6 +755,17 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const adv = (avgVol10.value || 0) * (currentPrice.value || 0);
     if (adv && adv < 10e6) risks.push({ category: "Liquidity", label: "Low Liquidity", description: `Avg daily $ volume of ~$${(adv / 1e6).toFixed(1)}M makes large positions hard to exit.`, severity: "medium", source: "Yahoo" });
 
+    // SEC reporting timeliness — only surface as a risk card when not "ok".
+    if (sec?.ok && filingTimeliness.status !== "ok") {
+      risks.push({
+        category: "Regulatory",
+        label: filingTimeliness.status === "missing" ? "SEC Reporting — Missing Filing" : "SEC Reporting — Late Filing",
+        description: filingTimeliness.detail,
+        severity: filingTimeliness.status === "missing" ? "high" : "medium",
+        source: "SEC EDGAR",
+      });
+    }
+
     const positives: string[] = [];
     const negatives: string[] = [];
     if (card2Score >= 7) positives.push("strong fundamentals");
@@ -818,7 +829,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
       cards,
       radar,
       risks,
-      crossCheck,
+      filingTimeliness,
       macro,
       analyst: {
         ratings: YrecTrend.slice(0, 6).map((rt: any) => ({
