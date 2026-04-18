@@ -15,11 +15,6 @@ interface Props {
   cik: string | null;
 }
 
-const filingUrl = (cik: string, accession: string, doc: string) => {
-  const acc = accession.replace(/-/g, "");
-  return `https://www.sec.gov/Archives/edgar/data/${cik}/${acc}/${doc}`;
-};
-
 export function AnalystIntelligence(p: Props) {
   return (
     <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -81,27 +76,6 @@ export function AnalystIntelligence(p: Props) {
             <div className="text-sm text-muted-foreground mt-1">
               Expected EPS: <span className="text-foreground font-medium">${p.nextEPSEst.toFixed(2)}</span>
             </div>
-          )}
-        </div>
-        <div className="glass-card p-5">
-          <h3 className="font-semibold mb-3">Recent SEC Filings</h3>
-          {p.filings.length > 0 && p.cik ? (
-            <ul className="space-y-2 text-sm">
-              {p.filings.slice(0, 5).map((f, i) => (
-                <li key={i} className="flex items-center justify-between">
-                  <a
-                    href={filingUrl(p.cik!, f.accession, f.primaryDoc)}
-                    target="_blank" rel="noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    {f.form}
-                  </a>
-                  <span className="text-xs text-muted-foreground">{fmtDate(f.filingDate)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">No filings available.</p>
           )}
         </div>
       </div>
