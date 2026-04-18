@@ -1,12 +1,19 @@
 import { createServerFn } from "@tanstack/react-start";
-import { fetchYahooBundle, fetchYahooChart, yRaw, yStr } from "./sources/yahoo.server";
+import {
+  fetchYahooBundle,
+  fetchYahooChart,
+  yRaw,
+  yStr,
+  isYahooRateLimited,
+  resetYahooRateLimit,
+} from "./sources/yahoo.server";
 import { fetchFMPBundle } from "./sources/fmp.server";
 import { fetchAVBundle, avNum } from "./sources/alpha-vantage.server";
 import { fetchSECBundle } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
 import { fetchWikiSummary } from "./sources/wiki.server";
 import { sma, rsi, macdCalc, bollinger, histVolatility } from "./sources/technicals.server";
-import { pick, SourceLedger, type Indicator } from "./sources/waterfall.server";
+import { pick, SourceLedger, setYahooDemoted, type Indicator } from "./sources/waterfall.server";
 
 // ────────────────────── small utility helpers ──────────────────────
 type Confidence = "high" | "medium" | "low";

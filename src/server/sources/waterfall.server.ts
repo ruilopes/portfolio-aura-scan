@@ -39,12 +39,25 @@ const isMeaningfulAllowZero = (v: unknown): boolean => {
 
 export type Candidate<T> = { source: SourceName; get: () => T | null | undefined };
 
+// When Yahoo is rate-limited, we demote any "Yahoo" / "Yahoo Chart" candidate
+// to the back of the priority list — without rewriting every pick() call.
+let yahooDemoted = false;
+export function setYahooDemoted(v: boolean): void {
+  yahooDemoted = v;
+}
+function reorder<T>(candidates: Candidate<T>[]): Candidate<T>[] {
+  if (!yahooDemoted) return candidates;
+  const yahoo = candidates.filter((c) => c.source === "Yahoo" || c.source === "Yahoo Chart");
+  const rest = candidates.filter((c) => c.source !== "Yahoo" && c.source !== "Yahoo Chart");
+  return [...rest, ...yahoo];
+}
+
 export function pick<T>(
   candidates: Candidate<T>[],
   opts: { acceptZero?: boolean } = {},
 ): Indicator<T | null> {
   const test = opts.acceptZero ? isMeaningfulAllowZero : isMeaningful;
-  for (const c of candidates) {
+  for (const c of reorder(candidates)) {
     try {
       const v = c.get();
       if (test(v)) return { value: v as T, source: c.source };
