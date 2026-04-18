@@ -826,6 +826,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
       sourceStatus: {
         yahoo: yahoo?.ok || false,
         yahooChart: !!chart,
+        yahooRateLimited: isYahooRateLimited(),
         fmp: fmp?.ok || false,
         fmpHasKey: fmp?.hasKey || false,
         fmpRateLimited: fmp?.rateLimited || false,
