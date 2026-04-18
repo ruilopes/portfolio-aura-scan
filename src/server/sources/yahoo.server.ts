@@ -6,6 +6,19 @@ import { getYahooAuth, clearYahooAuth, YAHOO_BROWSER_UA } from "../yahoo-auth.se
 
 const YAHOO = "https://query1.finance.yahoo.com";
 
+// ─── Yahoo rate-limit guard ───────────────────────────────────────────────
+// Once Yahoo returns a 429 from the Cloudflare Worker IP range, every
+// subsequent request in this isolate is short-circuited until the user
+// manually clicks "Retry Yahoo" (which calls resetYahooRateLimit()).
+let yahooRateLimited = false;
+export function isYahooRateLimited(): boolean {
+  return yahooRateLimited;
+}
+export function resetYahooRateLimit(): void {
+  yahooRateLimited = false;
+  clearYahooAuth();
+}
+
 export type YahooBundle = {
   ok: boolean;
   // Raw quoteSummary modules
@@ -131,6 +144,7 @@ export type YahooChart = {
 };
 
 export async function fetchYahooChart(ticker: string): Promise<YahooChart | null> {
+  if (yahooRateLimited) return null;
   try {
     const url = `${YAHOO}/v8/finance/chart/${encodeURIComponent(
       ticker,
@@ -138,6 +152,11 @@ export async function fetchYahooChart(ticker: string): Promise<YahooChart | null
     const res = await fetch(url, {
       headers: { "User-Agent": YAHOO_BROWSER_UA, Accept: "application/json" },
     });
+    if (res.status === 429) {
+      yahooRateLimited = true;
+      console.log(`[Yahoo Chart] ${ticker} → 429, demoting Yahoo for session`);
+      return null;
+    }
     if (!res.ok) return null;
     const json = await res.json();
     const result = json?.chart?.result?.[0];

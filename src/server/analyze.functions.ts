@@ -1,12 +1,19 @@
 import { createServerFn } from "@tanstack/react-start";
-import { fetchYahooBundle, fetchYahooChart, yRaw, yStr } from "./sources/yahoo.server";
+import {
+  fetchYahooBundle,
+  fetchYahooChart,
+  yRaw,
+  yStr,
+  isYahooRateLimited,
+  resetYahooRateLimit,
+} from "./sources/yahoo.server";
 import { fetchFMPBundle } from "./sources/fmp.server";
 import { fetchAVBundle, avNum } from "./sources/alpha-vantage.server";
 import { fetchSECBundle } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
 import { fetchWikiSummary } from "./sources/wiki.server";
 import { sma, rsi, macdCalc, bollinger, histVolatility } from "./sources/technicals.server";
-import { pick, SourceLedger, type Indicator } from "./sources/waterfall.server";
+import { pick, SourceLedger, setYahooDemoted, type Indicator } from "./sources/waterfall.server";
 
 // ────────────────────── small utility helpers ──────────────────────
 type Confidence = "high" | "medium" | "low";
@@ -33,18 +40,22 @@ const sBand = (v: number | null, low: number, mid: number, high: number) => {
 
 // ────────────────────── main ──────────────────────
 export const analyzeStock = createServerFn({ method: "POST" })
-  .inputValidator((d: { ticker: string; fmpKey?: string; avKey?: string }) => {
+  .inputValidator((d: { ticker: string; fmpKey?: string; avKey?: string; forceYahooRetry?: boolean }) => {
     const t = (d?.ticker || "").trim().toUpperCase();
     if (!/^[A-Z.\-]{1,10}$/.test(t)) throw new Error("Invalid ticker");
     return {
       ticker: t,
       fmpKey: typeof d?.fmpKey === "string" ? d.fmpKey.trim() : "",
       avKey: typeof d?.avKey === "string" ? d.avKey.trim() : "",
+      forceYahooRetry: !!d?.forceYahooRetry,
     };
   })
   .handler(async ({ data }) => {
-    const { ticker, fmpKey, avKey } = data;
+    const { ticker, fmpKey, avKey, forceYahooRetry } = data;
     const ledger = new SourceLedger();
+
+    // If user clicked "Retry Yahoo", clear the rate-limit flag before fetching.
+    if (forceYahooRetry) resetYahooRateLimit();
 
     // 1. Fan out ALL sources in parallel.
     const [yahooR, chartR, fmpR, avR, secR, fredR] = await Promise.allSettled([
@@ -63,9 +74,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const sec = secR.status === "fulfilled" ? secR.value : null;
     const fred = fredR.status === "fulfilled" ? fredR.value : null;
 
+    // Yahoo demotion: once 429'd, demote Yahoo across all pick() calls so FMP
+    // / AV / SEC become the primary sources for the rest of this request.
+    const yahooRateLimited = isYahooRateLimited();
+    setYahooDemoted(yahooRateLimited);
+
     // Set per-source status (drives the footer).
-    ledger.setStatus("Yahoo", yahoo?.ok ? "ok" : "failed");
-    ledger.setStatus("Yahoo Chart", chart ? "ok" : "failed");
+    ledger.setStatus("Yahoo", yahooRateLimited ? "rate-limit" : yahoo?.ok ? "ok" : "failed");
+    ledger.setStatus("Yahoo Chart", yahooRateLimited ? "rate-limit" : chart ? "ok" : "failed");
     ledger.setStatus(
       "FMP",
       !fmp?.hasKey ? "no-key" : fmp?.rateLimited ? "rate-limit" : fmp?.ok ? "ok" : "failed",
@@ -810,6 +826,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
       sourceStatus: {
         yahoo: yahoo?.ok || false,
         yahooChart: !!chart,
+        yahooRateLimited: isYahooRateLimited(),
         fmp: fmp?.ok || false,
         fmpHasKey: fmp?.hasKey || false,
         fmpRateLimited: fmp?.rateLimited || false,

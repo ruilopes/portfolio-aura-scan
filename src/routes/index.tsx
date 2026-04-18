@@ -48,19 +48,29 @@ function DashboardPage() {
   }, [theme]);
 
   const mutation = useMutation({
-    mutationFn: async (t: string): Promise<AnalysisResult> => {
+    mutationFn: async (opts: { ticker: string; forceYahooRetry?: boolean }): Promise<AnalysisResult> => {
       const ttl = settings.cacheMinutes * 60_000;
-      const cached = cacheGet<AnalysisResult>(`analysis:${t}`, ttl);
-      if (cached) return cached;
-      const fresh = await analyzeStock({ data: { ticker: t } });
-      cacheSet(`analysis:${t}`, fresh);
+      // Bypass cache when manually retrying Yahoo.
+      if (!opts.forceYahooRetry) {
+        const cached = cacheGet<AnalysisResult>(`analysis:${opts.ticker}`, ttl);
+        if (cached) return cached;
+      }
+      const fresh = await analyzeStock({
+        data: { ticker: opts.ticker, forceYahooRetry: opts.forceYahooRetry },
+      });
+      cacheSet(`analysis:${opts.ticker}`, fresh);
       return fresh;
     },
   });
 
   const onAnalyze = () => {
     const t = ticker.trim().toUpperCase();
-    if (t) mutation.mutate(t);
+    if (t) mutation.mutate({ ticker: t });
+  };
+
+  const onRetryYahoo = () => {
+    const t = (mutation.data?.ticker || ticker).trim().toUpperCase();
+    if (t) mutation.mutate({ ticker: t, forceYahooRetry: true });
   };
 
   const result = mutation.data;
@@ -164,6 +174,25 @@ function DashboardPage() {
           )}
         </section>
 
+        {/* Yahoo rate-limit banner */}
+        {result?.sourceStatus?.yahooRateLimited && (
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <span>
+              ⚠️ Yahoo Finance is currently rate-limited — data is being served from
+              FMP &amp; Alpha Vantage.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRetryYahoo}
+              disabled={mutation.isPending}
+              className="border-warning/40 text-warning hover:bg-warning/20"
+            >
+              {mutation.isPending ? "Retrying…" : "Retry Yahoo"}
+            </Button>
+          </div>
+        )}
+
         <div ref={dashRef} className="space-y-8">
           {mutation.isPending && <LoadingSkeleton />}
           {result && <DashboardContent result={result} onOpenSettings={() => setSettingsOpen(true)} />}
@@ -188,25 +217,65 @@ function DashboardPage() {
         {/* FOOTER — Data sources */}
         <footer className="mt-12 pt-8 border-t border-border">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Data Sources</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
             {[
-              { name: "Yahoo Finance", desc: "16 modules: fundamentals, ESG, ownership, analysts", k: "yahoo" as const },
-              { name: "Yahoo Chart API", desc: "1y daily OHLCV → SMA, RSI, MACD, BB", k: "yahooChart" as const },
-              { name: "SEC EDGAR", desc: "10-K/Q/8-K filings + company facts cross-check", k: "sec" as const },
-              { name: "FRED (St. Louis Fed)", desc: "Fed Funds, 10Y, CPI, USD Idx, VIX (CSV)", k: "fred" as const },
-              { name: "Wikipedia", desc: "Company description fallback", k: "wiki" as const },
-            ].map((s) => {
-              const ok = result?.sourceStatus?.[s.k];
-              return (
-                <div key={s.k} className="glass-card p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm text-foreground">{s.name}</span>
-                    <span className={ok ? "text-success" : "text-muted-foreground"}>{ok ? "✓" : "—"}</span>
-                  </div>
-                  <p className="text-muted-foreground mt-1">{s.desc}</p>
+              {
+                name: "FMP",
+                desc: "Primary: fundamentals, ratios, earnings, analysts",
+                ok: result?.sourceStatus?.fmp,
+                badge: result?.sourceStatus?.fmp ? "✅ Primary" : result?.sourceStatus?.fmpHasKey ? "✗ failed" : "— no key",
+              },
+              {
+                name: "Alpha Vantage",
+                desc: "Active fallback: technicals, RSI, MACD, overview",
+                ok: result?.sourceStatus?.av,
+                badge: result?.sourceStatus?.av ? "✅ Active" : result?.sourceStatus?.avHasKey ? "✗ failed" : "— no key",
+              },
+              {
+                name: "SEC EDGAR",
+                desc: "Active: historical financials, filings",
+                ok: result?.sourceStatus?.sec,
+                badge: result?.sourceStatus?.sec ? "✅ Active" : "✗ failed",
+              },
+              {
+                name: "FRED",
+                desc: "Active: Fed Funds, 10Y, CPI, VIX, DXY",
+                ok: result?.sourceStatus?.fred,
+                badge: result?.sourceStatus?.fred ? "✅ Active" : "✗ failed",
+              },
+              {
+                name: "Yahoo Finance",
+                desc: "Last resort: rate-limited from Cloudflare Workers",
+                ok: result?.sourceStatus?.yahoo,
+                badge: result?.sourceStatus?.yahooRateLimited
+                  ? "⚠️ Rate-limited"
+                  : result?.sourceStatus?.yahoo ? "✅ OK" : "✗ failed",
+              },
+              {
+                name: "Yahoo Chart API",
+                desc: "Last resort: 1y OHLCV for SMA/RSI/MACD/BB",
+                ok: result?.sourceStatus?.yahooChart,
+                badge: result?.sourceStatus?.yahooRateLimited
+                  ? "⚠️ Rate-limited"
+                  : result?.sourceStatus?.yahooChart ? "✅ OK" : "✗ failed",
+              },
+              {
+                name: "Wikipedia",
+                desc: "Company description fallback",
+                ok: result?.sourceStatus?.wiki,
+                badge: result?.sourceStatus?.wiki ? "✅ Used" : "—",
+              },
+            ].map((s) => (
+              <div key={s.name} className="glass-card p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm text-foreground">{s.name}</span>
+                  <span className={s.ok ? "text-success text-[10px]" : "text-muted-foreground text-[10px]"}>
+                    {s.badge}
+                  </span>
                 </div>
-              );
-            })}
+                <p className="text-muted-foreground mt-1">{s.desc}</p>
+              </div>
+            ))}
           </div>
           <p className="text-xs text-muted-foreground mt-6 text-center">
             Educational use only · Not investment advice · Verify all data independently
@@ -273,10 +342,12 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
             )}
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />
-              <SourceBadge name="Yahoo Chart" ok={result.sourceStatus.yahooChart} />
+              <SourceBadge name="FMP" ok={result.sourceStatus.fmp} />
+              <SourceBadge name="Alpha Vantage" ok={result.sourceStatus.av} />
               <SourceBadge name="SEC EDGAR" ok={result.sourceStatus.sec} />
               <SourceBadge name="FRED" ok={result.sourceStatus.fred} />
+              <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />
+              <SourceBadge name="Yahoo Chart" ok={result.sourceStatus.yahooChart} />
               <SourceBadge name="Wikipedia" ok={result.sourceStatus.wiki} />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
