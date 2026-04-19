@@ -179,7 +179,7 @@ function DashboardPage() {
           <div className="mb-6 flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
             <span>
               ⚠️ Yahoo Finance is currently rate-limited — data is being served from
-              FMP &amp; Alpha Vantage.
+              Polygon.io &amp; Tiingo.
             </span>
             <Button
               size="sm"
