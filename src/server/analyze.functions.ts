@@ -469,9 +469,13 @@ export const analyzeStock = createServerFn({ method: "POST" })
     );
 
     // ────────────── Risk extras ──────────────
-    const beta = pick<number>([
+    const reportedBeta = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.beta) ?? yRaw(Yks?.beta) },
-      { source: "Polygon", get: () => polyBeta(PolyAggs, poly?.spyAggs) },
+    ]);
+    const calculatedBeta = polyBeta(PolyAggs, poly?.spyAggs);
+    const beta = pick<number>([
+      { source: "Yahoo", get: () => reportedBeta.value },
+      { source: "Polygon", get: () => calculatedBeta },
     ]);
     const shortPct = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.shortPercentOfFloat) },
