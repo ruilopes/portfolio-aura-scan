@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { analyzeStock, type AnalysisResult } from "@/server/analyze.functions";
-import { Gauge } from "@/components/dashboard/Gauge";
+import { ScoreBreakdown } from "@/components/dashboard/ScoreBreakdown";
 import { SourceBadge } from "@/components/dashboard/SourceBadge";
 import { FundamentalCard } from "@/components/dashboard/FundamentalCard";
 import { PriceChart } from "@/components/dashboard/PriceChart";
@@ -309,8 +309,8 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
   return (
     <>
       {/* Company header + score */}
-      <section className="glass-card p-6">
-        <div className="flex flex-col lg:flex-row gap-6 items-center lg:items-start">
+      <section className="glass-card p-6 space-y-6">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
           <div className="flex-1 min-w-0 w-full">
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-3xl font-bold">{result.ticker}</h2>
@@ -352,17 +352,17 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
               Last updated: {fmtDate(result.lastUpdated)} {new Date(result.lastUpdated).toLocaleTimeString()}
             </p>
           </div>
-
-          <div className="flex flex-col items-center gap-3">
-            <div className={`px-4 py-1.5 rounded-full font-semibold text-sm bg-${riskTone}/10 text-${riskTone} border border-${riskTone}/40`}>
-              {riskLabel}
-            </div>
-            <Gauge value={result.composite} size={200} />
-            <p className="text-sm text-center max-w-xs text-muted-foreground italic">
-              "{result.summary}"
-            </p>
-          </div>
         </div>
+
+        <ScoreBreakdown
+          cards={result.cards.map((c: any) => ({
+            id: c.id, title: c.title, weight: c.weight, score: c.score, indicators: c.indicators,
+          }))}
+          composite={result.composite}
+          riskLabel={riskLabel}
+          riskTone={riskTone}
+          summary={result.summary}
+        />
       </section>
 
       {/* Price chart */}
