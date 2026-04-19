@@ -464,8 +464,25 @@ export const analyzeStock = createServerFn({ method: "POST" })
       { source: "Yahoo", get: () => yRaw(Yfin?.targetMeanPrice) },
       // No reliable free price-target source — leave Polygon/Tiingo unset; SEC has none.
     ]);
+    const targetHigh = pick<number>([
+      { source: "Yahoo", get: () => yRaw(Yfin?.targetHighPrice) },
+    ]);
+    const targetLow = pick<number>([
+      { source: "Yahoo", get: () => yRaw(Yfin?.targetLowPrice) },
+    ]);
     const upside = targetPrice.value && currentPrice.value ? (targetPrice.value - currentPrice.value) / currentPrice.value : null;
     ledger.record("Target Price", targetPrice);
+
+    // Analyst breakdown (raw counts) for price-target panel
+    const analystBreakdown = totalAnalystsY > 0
+      ? {
+          strongBuy: lastRec.strongBuy ?? 0,
+          buy: lastRec.buy ?? 0,
+          hold: lastRec.hold ?? 0,
+          sell: lastRec.sell ?? 0,
+          strongSell: lastRec.strongSell ?? 0,
+        }
+      : null;
 
     const recentUpgrades = (() => {
       if (Yupgrades.length) {
