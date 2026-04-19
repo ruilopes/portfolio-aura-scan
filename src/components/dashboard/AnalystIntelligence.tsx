@@ -1,4 +1,4 @@
-import { fmtDate, fmtPrice, fmtPct } from "@/lib/format";
+import { parseYahooDate, fmtPrice, fmtPct } from "@/lib/format";
 
 interface Rating { date: string; buy: number; hold: number; sell: number }
 interface Filing { form: string; filingDate: string; accession: string; primaryDoc: string }
@@ -52,14 +52,17 @@ export function AnalystIntelligence(p: Props) {
                 </tr>
               </thead>
               <tbody>
-                {p.ratings.map((r, i) => (
+                {p.ratings.map((r, i) => {
+                  const dateLabel = parseYahooDate(r.date);
+                  return (
                   <tr key={i} className="border-b border-border/40">
-                    <td className="py-2">{fmtDate(r.date)}</td>
+                    <td className={`py-2 ${dateLabel === "Date unavailable" ? "text-muted-foreground italic" : ""}`}>{dateLabel}</td>
                     <td className="text-right text-success font-medium">{r.buy}</td>
                     <td className="text-right text-muted-foreground">{r.hold}</td>
                     <td className="text-right text-danger font-medium">{r.sell}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -71,7 +74,7 @@ export function AnalystIntelligence(p: Props) {
       <div className="space-y-5">
         <div className="glass-card p-5">
           <h3 className="font-semibold mb-3">Next Earnings</h3>
-          <div className="text-2xl font-bold">{fmtDate(p.nextEarnings)}</div>
+          <div className="text-2xl font-bold">{parseYahooDate(p.nextEarnings)}</div>
           {p.nextEPSEst != null && (
             <div className="text-sm text-muted-foreground mt-1">
               Expected EPS: <span className="text-foreground font-medium">${p.nextEPSEst.toFixed(2)}</span>
