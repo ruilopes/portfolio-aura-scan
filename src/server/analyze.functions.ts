@@ -952,6 +952,21 @@ export const analyzeStock = createServerFn({ method: "POST" })
       },
       filings,
       news: mergedNews,
+      priceTarget: {
+        current: currentPrice.value,
+        consensus: targetPrice.value,
+        high: targetHigh.value,
+        low: targetLow.value,
+        upside,
+        totalAnalysts,
+        source: targetPrice.source || (totalAnalystsY > 0 ? "Yahoo" : null),
+        breakdown: analystBreakdown,
+      },
+      fairValue: {
+        models: fvModels,
+        average: avgFairValue,
+        averageVsCurrent: avgFairValueVsCurrent,
+      },
     };
   });
 
