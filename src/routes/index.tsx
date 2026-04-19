@@ -12,6 +12,7 @@ import { MacroBar } from "@/components/dashboard/MacroBar";
 import { AnalystIntelligence } from "@/components/dashboard/AnalystIntelligence";
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { SettingsModal } from "@/components/dashboard/SettingsModal";
+import { PriceTargetFairValue } from "@/components/dashboard/PriceTargetFairValue";
 
 import { OwnershipPanel } from "@/components/dashboard/OwnershipPanel";
 import { UpgradesPanel } from "@/components/dashboard/UpgradesPanel";
