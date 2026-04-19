@@ -377,6 +377,7 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
         currentPrice={result.price.current}
         high52={result.price.high52}
         low52={result.price.low52}
+        crossEvent={(result as any).crossEvent}
       />
 
       {/* Price Target & Fair Value */}
