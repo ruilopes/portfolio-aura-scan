@@ -67,6 +67,22 @@ export function PriceChart({
     return [start, today];
   }, [range]);
 
+  const yDomain = useMemo<[number, number]>(() => {
+    if (high52 != null && low52 != null && high52 > low52) {
+      const buffer = (high52 - low52) * 0.03;
+      return [low52 - buffer, high52 + buffer];
+    }
+    const lows = chartData.map((p) => p.low ?? p.close).filter((v): v is number => v != null);
+    const highs = chartData.map((p) => p.high ?? p.close).filter((v): v is number => v != null);
+    if (lows.length && highs.length) {
+      const lo = Math.min(...lows);
+      const hi = Math.max(...highs);
+      const buffer = (hi - lo) * 0.03;
+      return [lo - buffer, hi + buffer];
+    }
+    return [0, 0];
+  }, [chartData, high52, low52]);
+
   const lastClose = visible[visible.length - 1]?.close ?? currentPrice;
   const cp = currentPrice ?? lastClose ?? 0;
   const pos52w =
