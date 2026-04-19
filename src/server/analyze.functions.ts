@@ -112,22 +112,59 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const PolyCashAnnual = PolyFinAnnual?.cash_flow_statement || null;
 
     // ────────────── Price + technicals (Yahoo Chart → Polygon → Tiingo) ──────────────
-    // Build a unified close-price series, preferring Yahoo, then Polygon, then Tiingo EOD.
-    const series =
-      chart?.series?.length ? chart.series :
-      PolyAggs.length ? PolyAggs.map((a) => ({ date: a.date, close: a.close, high: a.high, low: a.low, volume: a.volume })) :
-      tg?.eod?.length ? tg.eod.map((a) => ({ date: a.date, close: a.adjClose, high: a.high, low: a.low, volume: a.volume })) :
-      [];
+    // Unified 1-year OHLCV series. Yahoo Chart → Polygon → Tiingo EOD.
+    const series: { date: string; close: number; high: number; low: number; volume: number }[] =
+      chart?.series?.length
+        ? chart.series.map((p) => ({ date: p.date, close: p.close, high: p.high ?? p.close, low: p.low ?? p.close, volume: p.volume ?? 0 }))
+        : PolyAggs.length
+        ? PolyAggs.map((a) => ({ date: a.date, close: a.close, high: a.high, low: a.low, volume: a.volume }))
+        : tg?.eod?.length
+        ? tg.eod.map((a) => ({ date: a.date, close: a.adjClose, high: a.high, low: a.low, volume: a.volume }))
+        : [];
     const closes = series.map((p) => p.close).filter((c) => typeof c === "number" && isFinite(c));
+    const highs = series.map((p) => p.high);
+    const lows = series.map((p) => p.low);
     const sma50Arr = sma(closes, 50);
     const sma200Arr = sma(closes, 200);
-    const sixMo = Math.max(0, closes.length - 126);
-    const priceChart = series.slice(sixMo).map((p, i) => ({
+
+    // Rolling 20-day Bollinger Bands (2 std dev) per-day for the chart overlay.
+    const bbPeriod = 20;
+    const bbUpperArr: (number | null)[] = [];
+    const bbMidArr: (number | null)[] = [];
+    const bbLowerArr: (number | null)[] = [];
+    for (let i = 0; i < closes.length; i++) {
+      if (i < bbPeriod - 1) { bbUpperArr.push(null); bbMidArr.push(null); bbLowerArr.push(null); continue; }
+      const slice = closes.slice(i - bbPeriod + 1, i + 1);
+      const mean = slice.reduce((a, b) => a + b, 0) / bbPeriod;
+      const sd = Math.sqrt(slice.reduce((s, x) => s + (x - mean) ** 2, 0) / bbPeriod);
+      bbMidArr.push(mean); bbUpperArr.push(mean + 2 * sd); bbLowerArr.push(mean - 2 * sd);
+    }
+
+    // Send full 1-year OHLCV + overlays. The client range selector (1M/3M/6M/1Y)
+    // just slices this array — no refetch needed.
+    const priceChart = series.map((p, i) => ({
       date: p.date,
       close: p.close,
-      sma50: sma50Arr[sixMo + i],
-      sma200: sma200Arr[sixMo + i],
+      high: p.high,
+      low: p.low,
+      volume: p.volume,
+      sma50: sma50Arr[i],
+      sma200: sma200Arr[i],
+      bbUpper: bbUpperArr[i],
+      bbMid: bbMidArr[i],
+      bbLower: bbLowerArr[i],
     }));
+
+    // ── Golden / Death Cross detection (last 30 trading days) ──
+    let crossEvent: { type: "golden" | "death"; daysAgo: number; date: string } | null = null;
+    for (let i = 1; i < Math.min(30, sma50Arr.length); i++) {
+      const idx = sma50Arr.length - i;
+      const p50 = sma50Arr[idx - 1], p200 = sma200Arr[idx - 1];
+      const c50 = sma50Arr[idx], c200 = sma200Arr[idx];
+      if (p50 == null || p200 == null || c50 == null || c200 == null) continue;
+      if (p50 <= p200 && c50 > c200) { crossEvent = { type: "golden", daysAgo: i, date: series[idx]?.date || "" }; break; }
+      if (p50 >= p200 && c50 < c200) { crossEvent = { type: "death", daysAgo: i, date: series[idx]?.date || "" }; break; }
+    }
 
     const lastClose = closes[closes.length - 1] ?? null;
     const currentPrice = pick<number>([
