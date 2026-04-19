@@ -17,7 +17,6 @@ import {
 import { fetchTiingoBundle, tgDaily, tgOverview, tgBeatRate } from "./sources/tiingo.server";
 import { fetchSECBundle, checkFilingTimeliness } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
-import { fetchWikiSummary } from "./sources/wiki.server";
 import { sma, rsi, macdCalc, bollinger, histVolatility } from "./sources/technicals.server";
 import { pick, SourceLedger, setYahooDemoted, type Indicator } from "./sources/waterfall.server";
 
@@ -86,7 +85,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
     );
     ledger.setStatus("SEC EDGAR", sec?.ok ? "ok" : "failed");
     ledger.setStatus("FRED", fred?.ok ? "ok" : "failed");
-    ledger.setStatus("Wikipedia", "failed"); // updated below if used
 
     // Convenience aliases for Yahoo modules
     const Yprice = yahoo?.price || {};
@@ -589,19 +587,10 @@ export const analyzeStock = createServerFn({ method: "POST" })
       { source: "Polygon", get: () => PolyTicker?.total_employees ?? null },
     ]);
 
-    let descSource: "Yahoo" | "Polygon" | "Wikipedia" | null = null;
+    let descSource: "Yahoo" | "Polygon" | null = null;
     let description: string | null = null;
     if (Yprof?.longBusinessSummary) { description = Yprof.longBusinessSummary; descSource = "Yahoo"; }
     else if (PolyTicker?.description) { description = PolyTicker.description; descSource = "Polygon"; }
-    else {
-      const wikiName = companyName.value || ticker;
-      const wiki = await fetchWikiSummary(wikiName);
-      if (wiki) {
-        description = wiki;
-        descSource = "Wikipedia";
-        ledger.setStatus("Wikipedia", "ok");
-      }
-    }
 
     const company = {
       name: companyName.value || ticker,
@@ -887,7 +876,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
         sec: sec?.ok || false,
         secCik: sec?.cik || null,
         fred: fred?.ok || false,
-        wiki: descSource === "Wikipedia",
       },
       completeness: {
         score: completeness,

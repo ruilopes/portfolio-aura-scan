@@ -24,7 +24,6 @@ export type DataSource =
   | "EDGAR"
   | "YAHOO"
   | "FRED"
-  | "WIKI"
   | "CALC";
 
 const SOURCE_TONES: Record<DataSource, string> = {
@@ -33,7 +32,6 @@ const SOURCE_TONES: Record<DataSource, string> = {
   EDGAR: "bg-amber-500/10 text-amber-400 border-amber-500/30",
   YAHOO: "bg-green-500/10 text-green-400 border-green-500/30",
   FRED: "bg-teal-500/10 text-teal-400 border-teal-500/30",
-  WIKI: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
   CALC: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
 };
 
@@ -43,7 +41,6 @@ const SOURCE_LABELS: Record<DataSource, string> = {
   EDGAR: "SEC",
   YAHOO: "YF",
   FRED: "FRED",
-  WIKI: "Wiki",
   CALC: "calc",
 };
 
@@ -55,7 +52,6 @@ export function sourceNameToCode(s: string | null | undefined): DataSource | nul
   if (x.includes("edgar") || x === "sec") return "EDGAR";
   if (x.includes("yahoo")) return "YAHOO";
   if (x.includes("fred")) return "FRED";
-  if (x.includes("wiki")) return "WIKI";
   if (x.includes("comput") || x === "calc") return "CALC";
   return null;
 }
