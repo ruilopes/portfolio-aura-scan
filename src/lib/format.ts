@@ -24,3 +24,26 @@ export const fmtDate = (d: string | Date | null | undefined) => {
   if (isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 };
+
+/**
+ * Robust date parser for Yahoo / FMP / mixed sources.
+ * - Yahoo timestamps come in seconds (~1.7e9), some modules use ms (~1.7e12).
+ * - FMP returns ISO date strings ("2024-11-05") or full ISO datetimes.
+ * - Returns "Date unavailable" when nothing usable is provided.
+ */
+export const parseYahooDate = (value: unknown): string => {
+  if (value == null || value === "") return "Date unavailable";
+  if (typeof value === "number" && isFinite(value)) {
+    const ms = value < 1e10 ? value * 1000 : value;
+    const dt = new Date(ms);
+    if (isNaN(dt.getTime())) return "Date unavailable";
+    return dt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  }
+  if (typeof value === "string" && value.length >= 4) {
+    const dt = new Date(value);
+    if (!isNaN(dt.getTime())) {
+      return dt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    }
+  }
+  return "Date unavailable";
+};

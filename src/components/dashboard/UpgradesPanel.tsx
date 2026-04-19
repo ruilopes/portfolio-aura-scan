@@ -1,4 +1,4 @@
-import { fmtDate } from "@/lib/format";
+import { parseYahooDate } from "@/lib/format";
 
 interface Upgrade {
   date: string | null;
@@ -43,7 +43,7 @@ export function UpgradesPanel({ upgrades }: { upgrades: Upgrade[] }) {
                 )}
               </div>
             </div>
-            <div className="text-xs text-muted-foreground shrink-0">{fmtDate(u.date)}</div>
+            <div className={`text-xs shrink-0 ${parseYahooDate(u.date) === "Date unavailable" ? "text-muted-foreground italic" : "text-muted-foreground"}`}>{parseYahooDate(u.date)}</div>
           </li>
         ))}
       </ul>
