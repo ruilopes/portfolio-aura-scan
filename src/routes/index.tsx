@@ -385,6 +385,13 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
         low52={result.price.low52}
       />
 
+      {/* Price Target & Fair Value */}
+      <PriceTargetFairValue
+        current={result.price.current}
+        priceTarget={(result as any).priceTarget}
+        fairValue={(result as any).fairValue}
+      />
+
       {/* Section 1 — Fundamentals */}
       <section>
         <h2 className="text-xl font-bold mb-4">Section 1 · Fundamental Analysis</h2>
