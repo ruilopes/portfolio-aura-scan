@@ -73,7 +73,7 @@ export function PriceChart({
     if (lows.length && highs.length) {
       const lo = Math.min(...lows);
       const hi = Math.max(...highs);
-      return [lo - (hi - lo) * 0.05, hi];
+      return [lo - (hi - lo) * 0.05, hi + (hi - lo) * 0.05];
     }
     return [0, 0];
   }, [chartData]);
