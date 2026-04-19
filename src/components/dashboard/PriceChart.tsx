@@ -68,15 +68,18 @@ export function PriceChart({
   }, [range]);
 
   const yDomain = useMemo<[number, number]>(() => {
-    const lows = chartData.map((p) => p.low ?? p.close).filter((v): v is number => v != null);
-    const highs = chartData.map((p) => p.high ?? p.close).filter((v): v is number => v != null);
-    if (lows.length && highs.length) {
-      const lo = Math.min(...lows);
-      const hi = Math.max(...highs);
-      return [lo - (hi - lo) * 0.05, hi + (hi - lo) * 0.05];
+    const allLows = data.map((p) => p.low ?? p.close).filter((v): v is number => v != null);
+    const allHighs = data.map((p) => p.high ?? p.close).filter((v): v is number => v != null);
+    const visHighs = chartData.map((p) => p.high ?? p.close).filter((v): v is number => v != null);
+    if (allLows.length && allHighs.length && visHighs.length) {
+      const low52 = Math.min(...allLows);
+      const high52 = Math.max(...allHighs);
+      const range52 = high52 - low52;
+      const buffer = range52 * 0.03;
+      return [low52 - buffer, Math.max(...visHighs) + buffer];
     }
     return [0, 0];
-  }, [chartData]);
+  }, [data, chartData]);
 
   const lastClose = visible[visible.length - 1]?.close ?? currentPrice;
   const cp = currentPrice ?? lastClose ?? 0;
