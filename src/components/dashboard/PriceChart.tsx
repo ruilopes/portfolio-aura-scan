@@ -118,7 +118,18 @@ export function PriceChart({
         <ResponsiveContainer>
           <ComposedChart data={chartData} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
             <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.3} />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} minTickGap={40} />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              scale="time"
+              domain={xDomain}
+              allowDataOverflow
+              tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+              minTickGap={40}
+              tickFormatter={(ts) =>
+                new Date(Number(ts)).toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+              }
+            />
             <YAxis
               yAxisId="price"
               domain={["auto", "auto"]}
@@ -129,6 +140,7 @@ export function PriceChart({
             <Tooltip
               contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: "var(--color-muted-foreground)" }}
+              labelFormatter={(ts) => new Date(Number(ts)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               formatter={(v: any, name: any) => {
                 const label = String(name ?? "");
                 if (v == null) return ["—", label];
