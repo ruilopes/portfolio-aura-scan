@@ -114,10 +114,11 @@ export function PriceChart({
             <Tooltip
               contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: "var(--color-muted-foreground)" }}
-              formatter={(v: any, name: string) => {
-                if (v == null) return ["—", name];
-                if (name === "Volume") return [Number(v).toLocaleString(), name];
-                return [`$${Number(v).toFixed(2)}`, name];
+              formatter={(v: any, name: any) => {
+                const label = String(name ?? "");
+                if (v == null) return ["—", label];
+                if (label === "Volume") return [Number(v).toLocaleString(), label];
+                return [`$${Number(v).toFixed(2)}`, label];
               }}
             />
             {/* Bollinger Band — stacked: invisible base + translucent band */}
