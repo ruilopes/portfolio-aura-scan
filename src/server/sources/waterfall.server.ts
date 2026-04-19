@@ -8,8 +8,8 @@
 export type SourceName =
   | "Yahoo"
   | "Yahoo Chart"
-  | "FMP"
-  | "Alpha Vantage"
+  | "Polygon"
+  | "Tiingo"
   | "SEC EDGAR"
   | "FRED"
   | "Wikipedia"
@@ -105,7 +105,7 @@ export class SourceLedger {
 
   toJSON() {
     const out: { source: SourceName; status: string; fields: string[]; lastFetched: string | null }[] = [];
-    const allSources: SourceName[] = ["Yahoo", "Yahoo Chart", "FMP", "Alpha Vantage", "SEC EDGAR", "FRED", "Wikipedia"];
+    const allSources: SourceName[] = ["Yahoo", "Yahoo Chart", "Polygon", "Tiingo", "SEC EDGAR", "FRED", "Wikipedia"];
     for (const s of allSources) {
       out.push({
         source: s,
