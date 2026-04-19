@@ -542,14 +542,19 @@ export const analyzeStock = createServerFn({ method: "POST" })
     // ────────────── Earnings calendar ──────────────
     // Yahoo's calendarEvents.earnings.earningsDate is an array of { raw, fmt }.
     // Prefer the formatted string; fall back to the raw timestamp; then FMP.
-    const yahooEarningsRaw = Ycal?.earnings?.earningsDate?.[0];
-    const nextEarnings: string | number | null =
-      yahooEarningsRaw?.fmt ||
-      (typeof yahooEarningsRaw?.raw === "number" ? yahooEarningsRaw.raw : null) ||
-      (typeof yahooEarningsRaw === "number" ? yahooEarningsRaw : null) ||
-      fmp?.earnings?.[0]?.date ||
-      fmp?.analystEstimates?.[0]?.date ||
-      null;
+    const yahooEarningsRaw: any = Ycal?.earnings?.earningsDate?.[0];
+    const nextEarnings: string | null = (() => {
+      if (yahooEarningsRaw?.fmt) return String(yahooEarningsRaw.fmt);
+      const ts =
+        typeof yahooEarningsRaw?.raw === "number" ? yahooEarningsRaw.raw :
+        typeof yahooEarningsRaw === "number" ? yahooEarningsRaw : null;
+      if (ts != null) {
+        const ms = ts < 1e10 ? ts * 1000 : ts;
+        return new Date(ms).toISOString().slice(0, 10);
+      }
+      const fmpDate = (fmp as any)?.earnings?.[0]?.date || (fmp as any)?.analystEstimates?.[0]?.date;
+      return fmpDate ? String(fmpDate) : null;
+    })();
     const nextEPSEst = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ycal?.earnings?.earningsAverage) },
       {
