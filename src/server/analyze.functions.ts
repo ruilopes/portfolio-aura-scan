@@ -540,7 +540,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
           }));
 
     // ────────────── Earnings calendar ──────────────
-    const nextEarnings = Ycal?.earnings?.earningsDate?.[0]?.fmt || null;
+    // Yahoo's calendarEvents.earnings.earningsDate is an array of { raw, fmt }.
+    // Prefer the formatted string; fall back to the raw timestamp; then FMP.
+    const yahooEarningsRaw = Ycal?.earnings?.earningsDate?.[0];
+    const nextEarnings: string | number | null =
+      yahooEarningsRaw?.fmt ||
+      (typeof yahooEarningsRaw?.raw === "number" ? yahooEarningsRaw.raw : null) ||
+      (typeof yahooEarningsRaw === "number" ? yahooEarningsRaw : null) ||
+      fmp?.earnings?.[0]?.date ||
+      fmp?.analystEstimates?.[0]?.date ||
+      null;
     const nextEPSEst = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ycal?.earnings?.earningsAverage) },
       {
@@ -832,12 +841,30 @@ export const analyzeStock = createServerFn({ method: "POST" })
       filingTimeliness,
       macro,
       analyst: {
-        ratings: YrecTrend.slice(0, 6).map((rt: any) => ({
-          date: rt.period || "",
-          buy: (rt.buy ?? 0) + (rt.strongBuy ?? 0),
-          hold: rt.hold ?? 0,
-          sell: (rt.sell ?? 0) + (rt.strongSell ?? 0),
-        })),
+        // Yahoo recommendationTrend reports periods as "0m", "-1m", "-2m"...
+        // (offset in months from today). Convert each to an ISO date so the UI
+        // can render a real date instead of an opaque label.
+        ratings: YrecTrend.slice(0, 6).map((rt: any) => {
+          let dateIso: string | null = null;
+          const period: string | undefined = rt?.period;
+          if (typeof period === "string") {
+            const m = /^(-?\d+)m$/.exec(period.trim());
+            if (m) {
+              const offset = parseInt(m[1], 10);
+              const d = new Date();
+              d.setMonth(d.getMonth() + offset);
+              dateIso = d.toISOString().slice(0, 10);
+            } else if (period.length >= 4 && !isNaN(new Date(period).getTime())) {
+              dateIso = period;
+            }
+          }
+          return {
+            date: dateIso || period || "",
+            buy: (rt.buy ?? 0) + (rt.strongBuy ?? 0),
+            hold: rt.hold ?? 0,
+            sell: (rt.sell ?? 0) + (rt.strongSell ?? 0),
+          };
+        }),
         targetPrice: targetPrice.value,
         targetPriceSource: targetPrice.source,
         upside,
