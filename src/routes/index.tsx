@@ -12,6 +12,7 @@ import { MacroBar } from "@/components/dashboard/MacroBar";
 import { AnalystIntelligence } from "@/components/dashboard/AnalystIntelligence";
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { SettingsModal } from "@/components/dashboard/SettingsModal";
+import { PriceTargetFairValue } from "@/components/dashboard/PriceTargetFairValue";
 
 import { OwnershipPanel } from "@/components/dashboard/OwnershipPanel";
 import { UpgradesPanel } from "@/components/dashboard/UpgradesPanel";
@@ -383,6 +384,13 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
         currentPrice={result.price.current}
         high52={result.price.high52}
         low52={result.price.low52}
+      />
+
+      {/* Price Target & Fair Value */}
+      <PriceTargetFairValue
+        current={result.price.current}
+        priceTarget={(result as any).priceTarget}
+        fairValue={(result as any).fairValue}
       />
 
       {/* Section 1 — Fundamentals */}
