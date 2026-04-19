@@ -176,14 +176,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
     ledger.record("price", currentPrice);
 
     const high52 = pick<number>([
+      { source: "Polygon", get: () => (highs.length ? Math.max(...highs.filter((h) => isFinite(h))) : null) },
+      { source: "Yahoo Chart", get: () => (highs.length ? Math.max(...highs.filter((h) => isFinite(h))) : null) },
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyTwoWeekHigh) },
-      { source: "Polygon", get: () => (PolyAggs.length ? Math.max(...PolyAggs.map((a) => a.high)) : null) },
-      { source: "Yahoo Chart", get: () => (closes.length ? Math.max(...closes) : null) },
     ]);
     const low52 = pick<number>([
+      { source: "Polygon", get: () => (lows.length ? Math.min(...lows.filter((l) => isFinite(l) && l > 0)) : null) },
+      { source: "Yahoo Chart", get: () => (lows.length ? Math.min(...lows.filter((l) => isFinite(l) && l > 0)) : null) },
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyTwoWeekLow) },
-      { source: "Polygon", get: () => (PolyAggs.length ? Math.min(...PolyAggs.map((a) => a.low)) : null) },
-      { source: "Yahoo Chart", get: () => (closes.length ? Math.min(...closes) : null) },
     ]);
     ledger.record("52w high", high52);
     ledger.record("52w low", low52);
@@ -249,7 +249,24 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const bb = pick<{ mid: number; upper: number; lower: number }>([
       { source: "computed", get: () => bollinger(closes, 20, 2) },
     ]);
-    const histVol = pick<number>([{ source: "computed", get: () => histVolatility(closes) }]);
+    // Windowed historical volatility (annualised, %).
+    const hvWindow = (n: number): number | null => {
+      if (closes.length < n + 1) return null;
+      const window = closes.slice(-n - 1);
+      const logRets: number[] = [];
+      for (let i = 1; i < window.length; i++) {
+        if (window[i] > 0 && window[i - 1] > 0) logRets.push(Math.log(window[i] / window[i - 1]));
+      }
+      if (logRets.length < 2) return null;
+      const mean = logRets.reduce((a, b) => a + b, 0) / logRets.length;
+      const variance = logRets.reduce((a, b) => a + (b - mean) ** 2, 0) / (logRets.length - 1);
+      return Math.sqrt(variance * 252);
+    };
+    const hv30 = hvWindow(30);
+    const hv90 = hvWindow(90);
+    const histVol = pick<number>([
+      { source: "computed", get: () => hv30 ?? histVolatility(closes) },
+    ]);
     const sma50Last = sma50Arr[sma50Arr.length - 1];
     const sma200Last = sma200Arr[sma200Arr.length - 1];
     const cp = currentPrice.value;
