@@ -121,7 +121,6 @@ export function PriceChart({
         <span><span className="inline-block w-3 h-0.5 align-middle" style={{ background: "var(--color-warning)" }} /> SMA 50</span>
         <span><span className="inline-block w-3 h-0.5 align-middle" style={{ background: "var(--color-danger)" }} /> SMA 200</span>
         <span><span className="inline-block w-3 h-2 align-middle opacity-30" style={{ background: "var(--color-primary)" }} /> Bollinger 20·2σ</span>
-        <span><span className="inline-block w-3 h-2 align-middle opacity-50" style={{ background: "var(--color-muted-foreground)" }} /> Volume</span>
       </div>
 
       {/* Main price chart */}
@@ -183,41 +182,6 @@ export function PriceChart({
             {lastClose != null && chartData.length > 0 && (
               <ReferenceDot yAxisId="price" x={chartData[chartData.length - 1].ts} y={lastClose} r={5} fill="var(--color-primary)" stroke="var(--color-background)" strokeWidth={2} />
             )}
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Volume bars */}
-      <div className="h-20 w-full -mt-2">
-        <ResponsiveContainer>
-          <ComposedChart data={chartData} margin={{ top: 0, right: 30, bottom: 5, left: 0 }}>
-            <XAxis
-              dataKey="date"
-              type="category"
-              domain={["dataMin", "dataMax"]}
-              allowDataOverflow={false}
-              tick={false}
-              axisLine={false}
-              height={0}
-            />
-            <YAxis
-              domain={[0, "auto"]}
-              allowDataOverflow={false}
-              tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
-              width={55}
-              tickFormatter={(v) => {
-                const n = Number(v);
-                if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-                if (n >= 1e6) return `${(n / 1e6).toFixed(0)}M`;
-                if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-                return String(n);
-              }}
-            />
-            <Tooltip
-              contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: any) => [Number(v).toLocaleString(), "Volume"]}
-            />
-            <Bar dataKey="volume" fill="var(--color-muted-foreground)" fillOpacity={0.5} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
