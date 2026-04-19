@@ -47,10 +47,25 @@ export function PriceChart({
     () =>
       visible.map((p) => ({
         ...p,
+        ts: new Date(p.date).getTime(),
         bbBand: p.bbUpper != null && p.bbLower != null ? p.bbUpper - p.bbLower : null,
       })),
     [visible],
   );
+
+  // Fixed X-axis window: exactly 52 weeks ago → today. Shorter ranges zoom from the right.
+  const xDomain = useMemo<[number, number]>(() => {
+    const today = Date.now();
+    const fullStart = today - 365 * 24 * 60 * 60 * 1000;
+    const rangeMs: Record<Range, number> = {
+      "1M": 30 * 24 * 60 * 60 * 1000,
+      "3M": 91 * 24 * 60 * 60 * 1000,
+      "6M": 182 * 24 * 60 * 60 * 1000,
+      "1Y": 365 * 24 * 60 * 60 * 1000,
+    };
+    const start = range === "1Y" ? fullStart : today - rangeMs[range];
+    return [start, today];
+  }, [range]);
 
   const lastClose = visible[visible.length - 1]?.close ?? currentPrice;
   const cp = currentPrice ?? lastClose ?? 0;
@@ -103,7 +118,18 @@ export function PriceChart({
         <ResponsiveContainer>
           <ComposedChart data={chartData} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
             <CartesianGrid stroke="var(--color-border)" strokeDasharray="3 3" opacity={0.3} />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} minTickGap={40} />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              scale="time"
+              domain={xDomain}
+              allowDataOverflow
+              tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+              minTickGap={40}
+              tickFormatter={(ts) =>
+                new Date(Number(ts)).toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+              }
+            />
             <YAxis
               yAxisId="price"
               domain={["auto", "auto"]}
@@ -114,6 +140,7 @@ export function PriceChart({
             <Tooltip
               contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: "var(--color-muted-foreground)" }}
+              labelFormatter={(ts) => new Date(Number(ts)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               formatter={(v: any, name: any) => {
                 const label = String(name ?? "");
                 if (v == null) return ["—", label];
@@ -132,7 +159,7 @@ export function PriceChart({
             {crossInWindow && (
               <ReferenceLine
                 yAxisId="price"
-                x={crossEvent!.date}
+                x={new Date(crossEvent!.date).getTime()}
                 stroke={crossEvent!.type === "golden" ? "var(--color-success)" : "var(--color-danger)"}
                 strokeDasharray="3 3"
                 label={{
@@ -144,7 +171,7 @@ export function PriceChart({
               />
             )}
             {lastClose != null && chartData.length > 0 && (
-              <ReferenceDot yAxisId="price" x={chartData[chartData.length - 1].date} y={lastClose} r={5} fill="var(--color-primary)" stroke="var(--color-background)" strokeWidth={2} />
+              <ReferenceDot yAxisId="price" x={chartData[chartData.length - 1].ts} y={lastClose} r={5} fill="var(--color-primary)" stroke="var(--color-background)" strokeWidth={2} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -154,7 +181,7 @@ export function PriceChart({
       <div className="h-20 w-full -mt-2">
         <ResponsiveContainer>
           <ComposedChart data={chartData} margin={{ top: 0, right: 30, bottom: 5, left: 0 }}>
-            <XAxis dataKey="date" tick={false} axisLine={false} height={0} />
+            <XAxis dataKey="ts" type="number" scale="time" domain={xDomain} allowDataOverflow tick={false} axisLine={false} height={0} />
             <YAxis
               tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
               width={55}
