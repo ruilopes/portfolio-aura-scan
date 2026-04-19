@@ -19,8 +19,8 @@ export function SourceBadge({ name, ok }: { name: string; ok: boolean }) {
 // ── Per-indicator source pill ────────────────────────────────────────────
 // Used next to individual indicator values to attribute the data source.
 export type DataSource =
-  | "FMP"
-  | "AV"
+  | "POLY"
+  | "TIINGO"
   | "EDGAR"
   | "YAHOO"
   | "FRED"
@@ -28,8 +28,8 @@ export type DataSource =
   | "CALC";
 
 const SOURCE_TONES: Record<DataSource, string> = {
-  FMP: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-  AV: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+  POLY: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  TIINGO: "bg-purple-500/10 text-purple-400 border-purple-500/30",
   EDGAR: "bg-amber-500/10 text-amber-400 border-amber-500/30",
   YAHOO: "bg-green-500/10 text-green-400 border-green-500/30",
   FRED: "bg-teal-500/10 text-teal-400 border-teal-500/30",
@@ -38,8 +38,8 @@ const SOURCE_TONES: Record<DataSource, string> = {
 };
 
 const SOURCE_LABELS: Record<DataSource, string> = {
-  FMP: "FMP",
-  AV: "AV",
+  POLY: "POLY",
+  TIINGO: "TIINGO",
   EDGAR: "SEC",
   YAHOO: "YF",
   FRED: "FRED",
@@ -50,8 +50,8 @@ const SOURCE_LABELS: Record<DataSource, string> = {
 export function sourceNameToCode(s: string | null | undefined): DataSource | null {
   if (!s) return null;
   const x = s.toLowerCase();
-  if (x.includes("fmp")) return "FMP";
-  if (x.includes("alpha")) return "AV";
+  if (x.includes("polygon") || x === "poly") return "POLY";
+  if (x.includes("tiingo")) return "TIINGO";
   if (x.includes("edgar") || x === "sec") return "EDGAR";
   if (x.includes("yahoo")) return "YAHOO";
   if (x.includes("fred")) return "FRED";
