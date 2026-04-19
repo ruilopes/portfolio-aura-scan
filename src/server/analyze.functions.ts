@@ -7,8 +7,14 @@ import {
   isYahooRateLimited,
   resetYahooRateLimit,
 } from "./sources/yahoo.server";
-import { fetchFMPBundle } from "./sources/fmp.server";
-import { fetchAVBundle, avNum } from "./sources/alpha-vantage.server";
+import {
+  fetchPolygonBundle,
+  polyFinValue,
+  polyYoYGrowth,
+  polyBeta,
+  polyNewsConsensus,
+} from "./sources/polygon.server";
+import { fetchTiingoBundle, tgDaily, tgOverview, tgBeatRate } from "./sources/tiingo.server";
 import { fetchSECBundle, checkFilingTimeliness } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
 import { fetchWikiSummary } from "./sources/wiki.server";
@@ -31,42 +37,39 @@ const sBand = (v: number | null, low: number, mid: number, high: number) => {
 
 // ────────────────────── main ──────────────────────
 export const analyzeStock = createServerFn({ method: "POST" })
-  .inputValidator((d: { ticker: string; fmpKey?: string; avKey?: string; forceYahooRetry?: boolean }) => {
+  .inputValidator((d: { ticker: string; forceYahooRetry?: boolean }) => {
     const t = (d?.ticker || "").trim().toUpperCase();
     if (!/^[A-Z.\-]{1,10}$/.test(t)) throw new Error("Invalid ticker");
     return {
       ticker: t,
-      fmpKey: typeof d?.fmpKey === "string" ? d.fmpKey.trim() : "",
-      avKey: typeof d?.avKey === "string" ? d.avKey.trim() : "",
       forceYahooRetry: !!d?.forceYahooRetry,
     };
   })
   .handler(async ({ data }) => {
-    const { ticker, fmpKey, avKey, forceYahooRetry } = data;
+    const { ticker, forceYahooRetry } = data;
     const ledger = new SourceLedger();
 
     // If user clicked "Retry Yahoo", clear the rate-limit flag before fetching.
     if (forceYahooRetry) resetYahooRateLimit();
 
     // 1. Fan out ALL sources in parallel.
-    const [yahooR, chartR, fmpR, avR, secR, fredR] = await Promise.allSettled([
+    const [yahooR, chartR, polyR, tgR, secR, fredR] = await Promise.allSettled([
       fetchYahooBundle(ticker),
       fetchYahooChart(ticker),
-      fetchFMPBundle(ticker, fmpKey),
-      fetchAVBundle(ticker, avKey),
+      fetchPolygonBundle(ticker),
+      fetchTiingoBundle(ticker),
       fetchSECBundle(ticker),
       fetchFredBundle(),
     ]);
 
     const yahoo = yahooR.status === "fulfilled" ? yahooR.value : null;
     const chart = chartR.status === "fulfilled" ? chartR.value : null;
-    const fmp = fmpR.status === "fulfilled" ? fmpR.value : null;
-    const av = avR.status === "fulfilled" ? avR.value : null;
+    const poly = polyR.status === "fulfilled" ? polyR.value : null;
+    const tg = tgR.status === "fulfilled" ? tgR.value : null;
     const sec = secR.status === "fulfilled" ? secR.value : null;
     const fred = fredR.status === "fulfilled" ? fredR.value : null;
 
-    // Yahoo demotion: once 429'd, demote Yahoo across all pick() calls so FMP
-    // / AV / SEC become the primary sources for the rest of this request.
+    // Yahoo demotion: once 429'd, demote Yahoo across all pick() calls.
     const yahooRateLimited = isYahooRateLimited();
     setYahooDemoted(yahooRateLimited);
 
@@ -74,12 +77,12 @@ export const analyzeStock = createServerFn({ method: "POST" })
     ledger.setStatus("Yahoo", yahooRateLimited ? "rate-limit" : yahoo?.ok ? "ok" : "failed");
     ledger.setStatus("Yahoo Chart", yahooRateLimited ? "rate-limit" : chart ? "ok" : "failed");
     ledger.setStatus(
-      "FMP",
-      !fmp?.hasKey ? "no-key" : fmp?.rateLimited ? "rate-limit" : fmp?.ok ? "ok" : "failed",
+      "Polygon",
+      !poly?.hasKey ? "no-key" : poly?.rateLimited ? "rate-limit" : poly?.ok ? "ok" : "failed",
     );
     ledger.setStatus(
-      "Alpha Vantage",
-      !av?.hasKey ? "no-key" : av?.rateLimited ? "rate-limit" : av?.ok ? "ok" : "failed",
+      "Tiingo",
+      !tg?.hasKey ? "no-key" : tg?.rateLimited ? "rate-limit" : tg?.ok ? "ok" : "failed",
     );
     ledger.setStatus("SEC EDGAR", sec?.ok ? "ok" : "failed");
     ledger.setStatus("FRED", fred?.ok ? "ok" : "failed");
@@ -92,8 +95,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const Yfin = yahoo?.financialData || {};
     const Yprof = yahoo?.assetProfile || {};
     const YincH = yahoo?.incomeStatementHistory?.incomeStatementHistory || [];
-    const YbalH = yahoo?.balanceSheetHistory?.balanceSheetStatements || [];
-    const YcashH = yahoo?.cashflowStatementHistory?.cashflowStatements || [];
     const YearTrend = yahoo?.earningsTrend?.trend || [];
     const YrecTrend = yahoo?.recommendationTrend?.trend || [];
     const Yupgrades = yahoo?.upgradeDowngradeHistory?.history || [];
@@ -102,17 +103,24 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const Ycal = yahoo?.calendarEvents || {};
     const YsecFilings = yahoo?.secFilings?.filings || [];
 
-    const FMPp = fmp?.profile || null;
-    const FMPr = fmp?.ratiosTtm || null;
-    const FMPincome = fmp?.income || [];
-    const FMPbalance = fmp?.balance || [];
-    const FMPcashflow = fmp?.cashflow || [];
+    // Polygon convenience aliases
+    const PolyTicker = poly?.ticker || null;
+    const PolySnap = poly?.snapshot || null;
+    const PolyAggs = poly?.aggs || [];
+    const PolyFinAnnual = poly?.financials?.[0]?.financials || null;
+    const PolyFinQ = poly?.financialsQuarterly || [];
+    const PolyIncomeAnnual = PolyFinAnnual?.income_statement || null;
+    const PolyBalanceAnnual = PolyFinAnnual?.balance_sheet || null;
+    const PolyCashAnnual = PolyFinAnnual?.cash_flow_statement || null;
 
-    const AVo = av?.overview || null;
-
-    // ────────────── Price + technicals (Yahoo Chart, then computed) ──────────────
-    const series = chart?.series || [];
-    const closes = series.map((p) => p.close);
+    // ────────────── Price + technicals (Yahoo Chart → Polygon → Tiingo) ──────────────
+    // Build a unified close-price series, preferring Yahoo, then Polygon, then Tiingo EOD.
+    const series =
+      chart?.series?.length ? chart.series :
+      PolyAggs.length ? PolyAggs.map((a) => ({ date: a.date, close: a.close, high: a.high, low: a.low, volume: a.volume })) :
+      tg?.eod?.length ? tg.eod.map((a) => ({ date: a.date, close: a.adjClose, high: a.high, low: a.low, volume: a.volume })) :
+      [];
+    const closes = series.map((p) => p.close).filter((c) => typeof c === "number" && isFinite(c));
     const sma50Arr = sma(closes, 50);
     const sma200Arr = sma(closes, 200);
     const sixMo = Math.max(0, closes.length - 126);
@@ -126,20 +134,20 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const lastClose = closes[closes.length - 1] ?? null;
     const currentPrice = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yprice?.regularMarketPrice) },
+      { source: "Polygon", get: () => PolySnap?.day?.c ?? PolySnap?.lastTrade?.p ?? poly?.trades?.price ?? null },
       { source: "Yahoo Chart", get: () => lastClose },
-      { source: "FMP", get: () => FMPp?.price ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.Latest_Quarter ? null : null) },
+      { source: "Tiingo", get: () => tg?.eod?.[tg.eod.length - 1]?.adjClose ?? null },
     ]);
     ledger.record("price", currentPrice);
 
     const high52 = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyTwoWeekHigh) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.["52WeekHigh"]) },
+      { source: "Polygon", get: () => (PolyAggs.length ? Math.max(...PolyAggs.map((a) => a.high)) : null) },
       { source: "Yahoo Chart", get: () => (closes.length ? Math.max(...closes) : null) },
     ]);
     const low52 = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyTwoWeekLow) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.["52WeekLow"]) },
+      { source: "Polygon", get: () => (PolyAggs.length ? Math.min(...PolyAggs.map((a) => a.low)) : null) },
       { source: "Yahoo Chart", get: () => (closes.length ? Math.min(...closes) : null) },
     ]);
     ledger.record("52w high", high52);
@@ -147,12 +155,12 @@ export const analyzeStock = createServerFn({ method: "POST" })
 
     const fiftyDayAvg = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyDayAverage) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.["50DayMovingAverage"]) },
+      { source: "Polygon", get: () => poly?.sma50 ?? null },
       { source: "computed", get: () => sma50Arr[sma50Arr.length - 1] ?? null },
     ]);
     const twoHundredDayAvg = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.twoHundredDayAverage) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.["200DayMovingAverage"]) },
+      { source: "Polygon", get: () => poly?.sma200 ?? null },
       { source: "computed", get: () => sma200Arr[sma200Arr.length - 1] ?? null },
     ]);
     ledger.record("50d MA", fiftyDayAvg);
@@ -160,71 +168,51 @@ export const analyzeStock = createServerFn({ method: "POST" })
 
     const dayHigh = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.regularMarketDayHigh) ?? yRaw(Yprice?.regularMarketDayHigh) },
+      { source: "Polygon", get: () => PolySnap?.day?.h ?? null },
     ]);
     const dayLow = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.regularMarketDayLow) ?? yRaw(Yprice?.regularMarketDayLow) },
+      { source: "Polygon", get: () => PolySnap?.day?.l ?? null },
     ]);
     const volume = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.regularMarketVolume) ?? yRaw(Yprice?.regularMarketVolume) },
+      { source: "Polygon", get: () => PolySnap?.day?.v ?? null },
     ]);
     const avgVol = pick<number>([{ source: "Yahoo", get: () => yRaw(Ysd?.averageVolume) }]);
     const avgVol10 = pick<number>([{ source: "Yahoo", get: () => yRaw(Ysd?.averageVolume10days) }]);
     const changePctInd = pick<number>(
-      [{ source: "Yahoo", get: () => yRaw(Yprice?.regularMarketChangePercent) }],
+      [
+        { source: "Yahoo", get: () => yRaw(Yprice?.regularMarketChangePercent) },
+        { source: "Polygon", get: () => (PolySnap?.todaysChangePerc != null ? PolySnap.todaysChangePerc / 100 : null) },
+      ],
       { acceptZero: true },
     );
     const change = pick<number>(
-      [{ source: "Yahoo", get: () => yRaw(Yprice?.regularMarketChange) }],
+      [
+        { source: "Yahoo", get: () => yRaw(Yprice?.regularMarketChange) },
+        { source: "Polygon", get: () => PolySnap?.todaysChange ?? null },
+      ],
       { acceptZero: true },
     );
 
-    // RSI / MACD / BB / HV — prefer Yahoo chart computed; fall back to AV's pre-computed
+    // RSI / MACD / BB / HV — prefer Polygon's pre-computed; fall back to local computation.
     const rsiVal = pick<number>([
+      { source: "Polygon", get: () => poly?.rsi14 ?? null },
       { source: "computed", get: () => rsi(closes, 14) },
-      {
-        source: "Alpha Vantage",
-        get: () => {
-          const ta = av?.rsi?.["Technical Analysis: RSI"];
-          if (!ta) return null;
-          const dates = Object.keys(ta).sort().reverse();
-          return avNum(ta[dates[0]]?.RSI);
-        },
-      },
     ]);
     const macdLastObj = macdCalc(closes);
     const macdVal = pick<{ macd: number; signal: number; hist: number }>([
-      { source: "computed", get: () => macdLastObj },
       {
-        source: "Alpha Vantage",
-        get: () => {
-          const ta = av?.macd?.["Technical Analysis: MACD"];
-          if (!ta) return null;
-          const dates = Object.keys(ta).sort().reverse();
-          const row = ta[dates[0]];
-          if (!row) return null;
-          const m = avNum(row.MACD);
-          const s = avNum(row.MACD_Signal);
-          const h = avNum(row.MACD_Hist);
-          return m != null && s != null ? { macd: m, signal: s, hist: h ?? m - s } : null;
-        },
+        source: "Polygon",
+        get: () =>
+          poly?.macd
+            ? { macd: poly.macd.value, signal: poly.macd.signal, hist: poly.macd.histogram }
+            : null,
       },
+      { source: "computed", get: () => macdLastObj },
     ]);
     const bb = pick<{ mid: number; upper: number; lower: number }>([
       { source: "computed", get: () => bollinger(closes, 20, 2) },
-      {
-        source: "Alpha Vantage",
-        get: () => {
-          const ta = av?.bbands?.["Technical Analysis: BBANDS"];
-          if (!ta) return null;
-          const dates = Object.keys(ta).sort().reverse();
-          const row = ta[dates[0]];
-          if (!row) return null;
-          const upper = avNum(row["Real Upper Band"]);
-          const mid = avNum(row["Real Middle Band"]);
-          const lower = avNum(row["Real Lower Band"]);
-          return upper != null && mid != null && lower != null ? { upper, mid, lower } : null;
-        },
-      },
     ]);
     const histVol = pick<number>([{ source: "computed", get: () => histVolatility(closes) }]);
     const sma50Last = sma50Arr[sma50Arr.length - 1];
@@ -241,42 +229,41 @@ export const analyzeStock = createServerFn({ method: "POST" })
     // ────────────── Valuation (waterfall) ──────────────
     const trailingPE = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.trailingPE) ?? yRaw(Yks?.trailingPE) },
-      { source: "FMP", get: () => FMPr?.peRatioTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.PERatio) },
+      { source: "Tiingo", get: () => tgDaily(tg, "peRatio") },
+      { source: "Polygon", get: () => {
+        const ni = polyFinValue(PolyIncomeAnnual, "net_income_loss");
+        const mc = PolyTicker?.market_cap ?? null;
+        return ni && mc ? mc / ni : null;
+      } },
     ]);
     const forwardPE = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.forwardPE) ?? yRaw(Yks?.forwardPE) },
-      { source: "FMP", get: () => FMPr?.priceEarningsRatioTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.ForwardPE) },
+      { source: "Tiingo", get: () => tgDaily(tg, "forwardPE") ?? tgOverview(tg, "forwardPE") },
     ]);
     const priceToBook = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.priceToBook) },
-      { source: "FMP", get: () => FMPr?.pbRatioTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.PriceToBookRatio) },
+      { source: "Tiingo", get: () => tgDaily(tg, "pbRatio") },
     ]);
     const ps = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.priceToSalesTrailing12Months) },
-      { source: "FMP", get: () => FMPr?.priceToSalesRatioTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.PriceToSalesRatioTTM) },
+      { source: "Tiingo", get: () => tgDaily(tg, "psRatio") },
     ]);
     const evEbitda = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.enterpriseToEbitda) },
-      { source: "FMP", get: () => FMPr?.enterpriseValueMultipleTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.EVToEBITDA) },
+      { source: "Tiingo", get: () => tgOverview(tg, "evEbitda") },
     ]);
     const peg = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.pegRatio) },
-      { source: "FMP", get: () => FMPr?.pegRatioTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.PEGRatio) },
+      { source: "Tiingo", get: () => tgDaily(tg, "trailingPEG1Y") ?? tgOverview(tg, "pegRatio") },
     ]);
     const enterpriseValue = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.enterpriseValue) },
-      { source: "FMP", get: () => FMPp?.mktCap && FMPp?.beta ? null : null },
+      { source: "Tiingo", get: () => tgDaily(tg, "enterpriseVal") },
     ]);
     const marketCap = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.marketCap) ?? yRaw(Yprice?.marketCap) },
-      { source: "FMP", get: () => FMPp?.mktCap ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.MarketCapitalization) },
+      { source: "Polygon", get: () => PolyTicker?.market_cap ?? null },
+      { source: "Tiingo", get: () => tgDaily(tg, "marketCap") },
     ]);
     [trailingPE, forwardPE, priceToBook, ps, evEbitda, peg, enterpriseValue, marketCap].forEach(
       (i, idx) =>
@@ -284,71 +271,99 @@ export const analyzeStock = createServerFn({ method: "POST" })
     );
 
     // ────────────── Quality (waterfall) ──────────────
+    const polyGrossMargin = (() => {
+      const rev = polyFinValue(PolyIncomeAnnual, "revenues");
+      const gp = polyFinValue(PolyIncomeAnnual, "gross_profit");
+      return rev && gp ? gp / rev : null;
+    })();
+    const polyOpMargin = (() => {
+      const rev = polyFinValue(PolyIncomeAnnual, "revenues");
+      const op = polyFinValue(PolyIncomeAnnual, "operating_income_loss");
+      return rev && op ? op / rev : null;
+    })();
+    const polyNetMargin = (() => {
+      const rev = polyFinValue(PolyIncomeAnnual, "revenues");
+      const ni = polyFinValue(PolyIncomeAnnual, "net_income_loss");
+      return rev && ni ? ni / rev : null;
+    })();
+    const polyDE = (() => {
+      const liab = polyFinValue(PolyBalanceAnnual, "liabilities");
+      const eq = polyFinValue(PolyBalanceAnnual, "equity");
+      return liab && eq ? liab / eq : null;
+    })();
+    const polyCurrentRatio = (() => {
+      const ca = polyFinValue(PolyBalanceAnnual, "current_assets");
+      const cl = polyFinValue(PolyBalanceAnnual, "current_liabilities");
+      return ca && cl ? ca / cl : null;
+    })();
+
     const grossMargins = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.grossMargins) },
-      { source: "FMP", get: () => FMPr?.grossProfitMarginTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.GrossProfitTTM) && avNum(AVo?.RevenueTTM) ? avNum(AVo?.GrossProfitTTM)! / avNum(AVo?.RevenueTTM)! : null },
+      { source: "Tiingo", get: () => tgOverview(tg, "grossMargin") },
+      { source: "Polygon", get: () => polyGrossMargin },
       { source: "SEC EDGAR", get: () => sec?.facts?.grossProfit && sec?.facts?.revenues ? sec.facts.grossProfit / sec.facts.revenues : null },
     ]);
     const opMargin = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.operatingMargins) },
-      { source: "FMP", get: () => FMPr?.operatingProfitMarginTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.OperatingMarginTTM) },
+      { source: "Tiingo", get: () => tgOverview(tg, "operatingMargin") },
+      { source: "Polygon", get: () => polyOpMargin },
       { source: "SEC EDGAR", get: () => sec?.facts?.operatingIncome && sec?.facts?.revenues ? sec.facts.operatingIncome / sec.facts.revenues : null },
     ]);
     const profitMargins = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.profitMargins) },
-      { source: "FMP", get: () => FMPr?.netProfitMarginTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.ProfitMargin) },
+      { source: "Tiingo", get: () => tgOverview(tg, "netMargin") },
+      { source: "Polygon", get: () => polyNetMargin },
       { source: "SEC EDGAR", get: () => sec?.facts?.netIncome && sec?.facts?.revenues ? sec.facts.netIncome / sec.facts.revenues : null },
     ]);
     const roe = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.returnOnEquity) },
-      { source: "FMP", get: () => FMPr?.returnOnEquityTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.ReturnOnEquityTTM) },
+      { source: "Tiingo", get: () => tgOverview(tg, "roe") },
     ]);
     const roa = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.returnOnAssets) },
-      { source: "FMP", get: () => FMPr?.returnOnAssetsTTM ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.ReturnOnAssetsTTM) },
+      { source: "Tiingo", get: () => tgOverview(tg, "roa") },
     ]);
     // Yahoo returns D/E as percentage (e.g. 195 = 1.95). Normalise.
     let de = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.debtToEquity) },
-      { source: "FMP", get: () => FMPr?.debtEquityRatioTTM ?? null },
+      { source: "Tiingo", get: () => tgOverview(tg, "debtToEquity") },
+      { source: "Polygon", get: () => polyDE },
       { source: "SEC EDGAR", get: () => sec?.facts?.liabilities && sec?.facts?.equity ? sec.facts.liabilities / sec.facts.equity : null },
     ]);
     if (de.value != null && de.value > 5) de = { value: de.value / 100, source: de.source };
 
     const currentRatio = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.currentRatio) },
-      { source: "FMP", get: () => FMPr?.currentRatioTTM ?? null },
+      { source: "Tiingo", get: () => tgOverview(tg, "currentRatio") },
+      { source: "Polygon", get: () => polyCurrentRatio },
     ]);
     const quickRatio = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.quickRatio) },
-      { source: "FMP", get: () => FMPr?.quickRatioTTM ?? null },
+      { source: "Tiingo", get: () => tgOverview(tg, "quickRatio") },
     ]);
     const freeCashflow = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.freeCashflow) },
-      { source: "FMP", get: () => FMPcashflow[0]?.freeCashFlow ?? null },
-      { source: "SEC EDGAR", get: () => null }, // would need explicit OCF & Capex concepts
+      { source: "Polygon", get: () => {
+        const ocf = polyFinValue(PolyCashAnnual, "net_cash_flow_from_operating_activities");
+        const capex = polyFinValue(PolyCashAnnual, "capital_expenditure");
+        if (ocf == null) return null;
+        return capex == null ? ocf : ocf + capex; // capex usually negative
+      } },
     ]);
     const totalCash = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.totalCash) },
-      { source: "FMP", get: () => FMPbalance[0]?.cashAndCashEquivalents ?? null },
     ]);
     const totalDebt = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.totalDebt) },
-      { source: "FMP", get: () => FMPbalance[0]?.totalDebt ?? null },
+      { source: "Polygon", get: () => polyFinValue(PolyBalanceAnnual, "long_term_debt") },
       { source: "SEC EDGAR", get: () => sec?.facts?.longTermDebt ?? null },
     ]);
     const revenuePerShare = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.revenuePerShare) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.RevenuePerShareTTM) },
     ]);
     const eps = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.trailingEps) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.DilutedEPSTTM) ?? avNum(AVo?.EPS) },
+      { source: "Polygon", get: () => polyFinValue(PolyIncomeAnnual, "basic_earnings_per_share") },
       { source: "SEC EDGAR", get: () => sec?.facts?.eps ?? null },
     ]);
     const fcfYield = freeCashflow.value && marketCap.value ? freeCashflow.value / marketCap.value : null;
@@ -359,21 +374,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
       );
 
     // ────────────── Growth ──────────────
-    // YoY revenue growth: try Yahoo's pre-computed; else compute from the 4
-    // most-recent quarterly statements (Y/Y compares q0 to q3); else SEC
-    // history (annual, latest two years).
+    const polyRevYoY = polyYoYGrowth(PolyFinQ, "revenues");
+    const polyEpsYoY = polyYoYGrowth(PolyFinQ, "basic_earnings_per_share");
     const manualRevYoYFromYahoo = (() => {
       if (YincH.length < 4) return null;
       const recent = yRaw(YincH[0]?.totalRevenue);
       const yearAgo = yRaw(YincH[3]?.totalRevenue);
       if (recent && yearAgo && yearAgo > 0) return (recent - yearAgo) / yearAgo;
       return null;
-    })();
-    const fmpRevYoY = (() => {
-      if (FMPincome.length < 2) return null;
-      const r0 = FMPincome[0]?.revenue;
-      const r1 = FMPincome[1]?.revenue;
-      return r0 && r1 ? (r0 - r1) / r1 : null;
     })();
     const secRevYoY = (() => {
       const h = sec?.facts?.revenueHistory || [];
@@ -383,8 +391,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const revenueGrowth = pick<number>(
       [
         { source: "Yahoo", get: () => yRaw(Yfin?.revenueGrowth) },
-        { source: "FMP", get: () => fmpRevYoY },
-        { source: "Alpha Vantage", get: () => avNum(AVo?.QuarterlyRevenueGrowthYOY) },
+        { source: "Polygon", get: () => polyRevYoY },
         { source: "SEC EDGAR", get: () => secRevYoY },
         { source: "computed", get: () => manualRevYoYFromYahoo },
       ],
@@ -393,7 +400,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const earningsGrowth = pick<number>(
       [
         { source: "Yahoo", get: () => yRaw(Yfin?.earningsGrowth) },
-        { source: "Alpha Vantage", get: () => avNum(AVo?.QuarterlyEarningsGrowthYOY) },
+        { source: "Polygon", get: () => polyEpsYoY },
       ],
       { acceptZero: true },
     );
@@ -412,66 +419,55 @@ export const analyzeStock = createServerFn({ method: "POST" })
     // ────────────── Risk extras ──────────────
     const beta = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.beta) ?? yRaw(Yks?.beta) },
-      { source: "FMP", get: () => FMPp?.beta ?? null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.Beta) },
+      { source: "Polygon", get: () => polyBeta(PolyAggs, poly?.spyAggs) },
     ]);
     const shortPct = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.shortPercentOfFloat) },
     ]);
     const shortRatio = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.shortRatio) ?? yRaw(Ysd?.shortRatio) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.ShortRatio) },
     ]);
     ledger.record("Beta", beta);
     ledger.record("Short %", shortPct);
 
     // ────────────── Sentiment / analysts ──────────────
     const lastRec = YrecTrend[0] || {};
-    const buy = (lastRec.buy ?? 0) + (lastRec.strongBuy ?? 0);
-    const hold = lastRec.hold ?? 0;
-    const sell = (lastRec.sell ?? 0) + (lastRec.strongSell ?? 0);
-    const totalAnalysts = buy + hold + sell;
-    const consensusScore =
-      totalAnalysts > 0
+    const buyY = (lastRec.buy ?? 0) + (lastRec.strongBuy ?? 0);
+    const holdY = lastRec.hold ?? 0;
+    const sellY = (lastRec.sell ?? 0) + (lastRec.strongSell ?? 0);
+    const totalAnalystsY = buyY + holdY + sellY;
+    const consensusScoreY =
+      totalAnalystsY > 0
         ? ((lastRec.strongBuy ?? 0) * 1 +
             (lastRec.buy ?? 0) * 2 +
             (lastRec.hold ?? 0) * 3 +
             (lastRec.sell ?? 0) * 4 +
             (lastRec.strongSell ?? 0) * 5) /
-          totalAnalysts
+          totalAnalystsY
         : null;
+
+    // Polygon news-sentiment fallback
+    const polyConsensus = polyNewsConsensus(poly?.news, ticker);
+    const consensusScore = consensusScoreY ?? polyConsensus.score;
+    const totalAnalysts = totalAnalystsY > 0 ? totalAnalystsY : polyConsensus.total;
     const consensusLabel =
-      consensusScore == null
-        ? null
-        : consensusScore <= 1.5
-        ? "Strong Buy"
-        : consensusScore <= 2.5
-        ? "Buy"
-        : consensusScore <= 3.5
-        ? "Hold"
-        : consensusScore <= 4.5
-        ? "Sell"
-        : "Strong Sell";
+      consensusScoreY != null
+        ? (consensusScoreY <= 1.5 ? "Strong Buy" :
+           consensusScoreY <= 2.5 ? "Buy" :
+           consensusScoreY <= 3.5 ? "Hold" :
+           consensusScoreY <= 4.5 ? "Sell" : "Strong Sell")
+        : polyConsensus.label;
+    const consensusSource: "Yahoo" | "Polygon" | null =
+      totalAnalystsY > 0 ? "Yahoo" : polyConsensus.score != null ? "Polygon" : null;
 
     const targetPrice = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yfin?.targetMeanPrice) },
-      {
-        source: "FMP",
-        get: () => {
-          const arr = fmp?.priceTargets || [];
-          if (!arr.length) return null;
-          const vals = arr.map((p: any) => p.priceTarget).filter((v: any) => typeof v === "number" && isFinite(v));
-          if (!vals.length) return null;
-          return vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
-        },
-      },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.AnalystTargetPrice) },
+      // No reliable free price-target source — leave Polygon/Tiingo unset; SEC has none.
     ]);
     const upside = targetPrice.value && currentPrice.value ? (targetPrice.value - currentPrice.value) / currentPrice.value : null;
     ledger.record("Target Price", targetPrice);
 
     const recentUpgrades = (() => {
-      // Yahoo first; if empty, FMP.
       if (Yupgrades.length) {
         return Yupgrades.slice(0, 10).map((u: any) => ({
           date: u.epochGradeDate ? new Date(u.epochGradeDate * 1000).toISOString().slice(0, 10) : null,
@@ -482,66 +478,38 @@ export const analyzeStock = createServerFn({ method: "POST" })
           source: "Yahoo",
         }));
       }
-      const arr = fmp?.analystRecs || [];
-      return arr.slice(0, 10).map((r: any) => ({
-        date: r.date || null,
-        firm: r.analystCompany || null,
-        action: r.action || null,
-        toGrade: r.ratingTo || r.newGrade || null,
-        fromGrade: r.ratingFrom || r.previousGrade || null,
-        source: "FMP",
-      }));
+      return [];
     })();
 
     // ────────────── Ownership ──────────────
     const heldPctInst = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.heldPercentInstitutions) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.PercentInstitutions) },
     ]);
     const heldPctInsiders = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.heldPercentInsiders) },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.PercentInsiders) },
     ]);
-    const topHolders =
-      YinstOwn.length > 0
-        ? YinstOwn.slice(0, 5).map((h: any) => ({
-            organization: h.organization || null,
-            pctHeld: yRaw(h.pctHeld),
-            reportDate: h.reportDate?.fmt || null,
-            value: yRaw(h.value),
-            source: "Yahoo",
-          }))
-        : (fmp?.institutionalHolders || []).slice(0, 5).map((h: any) => ({
-            organization: h.holder || null,
-            pctHeld: null,
-            reportDate: h.dateReported || null,
-            value: h.shares ? Number(h.shares) : null,
-            source: "FMP",
-          }));
-    const recentInsiderTx =
-      YinsiderTx.length > 0
-        ? YinsiderTx.slice(0, 5).map((t: any) => ({
-            filerName: t.filerName || null,
-            filerRelation: t.filerRelation || null,
-            transactionText: t.transactionText || null,
-            shares: yRaw(t.shares),
-            value: yRaw(t.value),
-            startDate: t.startDate?.fmt || null,
-            source: "Yahoo",
-          }))
-        : (fmp?.insiderTrading || []).slice(0, 5).map((t: any) => ({
-            filerName: t.reportingName || null,
-            filerRelation: t.typeOfOwner || null,
-            transactionText: t.transactionType || null,
-            shares: t.securitiesTransacted ? Number(t.securitiesTransacted) : null,
-            value: t.price && t.securitiesTransacted ? Number(t.price) * Number(t.securitiesTransacted) : null,
-            startDate: t.transactionDate || null,
-            source: "FMP",
-          }));
+    const topHolders = YinstOwn.length > 0
+      ? YinstOwn.slice(0, 5).map((h: any) => ({
+          organization: h.organization || null,
+          pctHeld: yRaw(h.pctHeld),
+          reportDate: h.reportDate?.fmt || null,
+          value: yRaw(h.value),
+          source: "Yahoo",
+        }))
+      : [];
+    const recentInsiderTx = YinsiderTx.length > 0
+      ? YinsiderTx.slice(0, 5).map((t: any) => ({
+          filerName: t.filerName || null,
+          filerRelation: t.filerRelation || null,
+          transactionText: t.transactionText || null,
+          shares: yRaw(t.shares),
+          value: yRaw(t.value),
+          startDate: t.startDate?.fmt || null,
+          source: "Yahoo",
+        }))
+      : [];
 
     // ────────────── Earnings calendar ──────────────
-    // Yahoo's calendarEvents.earnings.earningsDate is an array of { raw, fmt }.
-    // Prefer the formatted string; fall back to the raw timestamp; then FMP.
     const yahooEarningsRaw: any = Ycal?.earnings?.earningsDate?.[0];
     const nextEarnings: string | null = (() => {
       if (yahooEarningsRaw?.fmt) return String(yahooEarningsRaw.fmt);
@@ -552,22 +520,13 @@ export const analyzeStock = createServerFn({ method: "POST" })
         const ms = ts < 1e10 ? ts * 1000 : ts;
         return new Date(ms).toISOString().slice(0, 10);
       }
-      const fmpDate = (fmp as any)?.earnings?.[0]?.date || (fmp as any)?.analystEstimates?.[0]?.date;
-      return fmpDate ? String(fmpDate) : null;
+      return null;
     })();
     const nextEPSEst = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ycal?.earnings?.earningsAverage) },
-      {
-        source: "FMP",
-        get: () => fmp?.analystEstimates?.[0]?.estimatedEpsAvg ?? null,
-      },
     ]);
     const nextRevEst = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ycal?.earnings?.revenueAverage) },
-      {
-        source: "FMP",
-        get: () => fmp?.analystEstimates?.[0]?.estimatedRevenueAvg ?? null,
-      },
     ]);
 
     // ────────────── SEC filings ──────────────
@@ -580,56 +539,44 @@ export const analyzeStock = createServerFn({ method: "POST" })
             accession: "",
             primaryDoc: "",
           }));
-
-    // ────────────── SEC filing timeliness ──────────────
     const filingTimeliness = checkFilingTimeliness(sec?.submissions || null);
 
     // ────────────── Company info (waterfall) ──────────────
     const companyName = pick<string>([
       { source: "Yahoo", get: () => yStr(Yprice?.longName) || yStr(Yprice?.shortName) },
-      { source: "FMP", get: () => FMPp?.companyName || null },
+      { source: "Polygon", get: () => PolyTicker?.name || null },
       { source: "SEC EDGAR", get: () => sec?.submissions?.name || null },
-      { source: "Alpha Vantage", get: () => AVo?.Name || null },
     ]);
     const sector = pick<string>([
       { source: "Yahoo", get: () => Yprof?.sector || null },
-      { source: "FMP", get: () => FMPp?.sector || null },
-      { source: "Alpha Vantage", get: () => AVo?.Sector || null },
+      { source: "Polygon", get: () => PolyTicker?.sic_description || null },
     ]);
     const industry = pick<string>([
       { source: "Yahoo", get: () => Yprof?.industry || null },
-      { source: "FMP", get: () => FMPp?.industry || null },
-      { source: "Alpha Vantage", get: () => AVo?.Industry || null },
+      { source: "Polygon", get: () => PolyTicker?.sic_description || null },
     ]);
     const country = pick<string>([
       { source: "Yahoo", get: () => Yprof?.country || null },
-      { source: "FMP", get: () => FMPp?.country || null },
-      { source: "Alpha Vantage", get: () => AVo?.Country || null },
+      { source: "Polygon", get: () => PolyTicker?.locale === "us" ? "United States" : (PolyTicker?.locale || null) },
     ]);
     const exchange = pick<string>([
       { source: "Yahoo", get: () => yStr(Yprice?.exchangeName) || Yprice?.exchange || null },
-      { source: "FMP", get: () => FMPp?.exchangeShortName || null },
-      { source: "Alpha Vantage", get: () => AVo?.Exchange || null },
+      { source: "Polygon", get: () => PolyTicker?.primary_exchange || null },
     ]);
     const website = pick<string>([
       { source: "Yahoo", get: () => Yprof?.website || null },
-      { source: "FMP", get: () => FMPp?.website || null },
+      { source: "Polygon", get: () => PolyTicker?.homepage_url || null },
     ]);
     const employees = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yprof?.fullTimeEmployees) },
-      { source: "FMP", get: () => FMPp?.fullTimeEmployees ? Number(FMPp.fullTimeEmployees) : null },
-      { source: "Alpha Vantage", get: () => avNum(AVo?.FullTimeEmployees) },
+      { source: "Polygon", get: () => PolyTicker?.total_employees ?? null },
     ]);
 
-    // Description: prefer rich source; fall back to Wikipedia using the
-    // resolved company name.
-    let descSource: "Yahoo" | "FMP" | "Alpha Vantage" | "Wikipedia" | null = null;
+    let descSource: "Yahoo" | "Polygon" | "Wikipedia" | null = null;
     let description: string | null = null;
     if (Yprof?.longBusinessSummary) { description = Yprof.longBusinessSummary; descSource = "Yahoo"; }
-    else if (FMPp?.description) { description = FMPp.description; descSource = "FMP"; }
-    else if (AVo?.Description) { description = AVo.Description; descSource = "Alpha Vantage"; }
+    else if (PolyTicker?.description) { description = PolyTicker.description; descSource = "Polygon"; }
     else {
-      // Try Wikipedia using the actual resolved name (not the raw ticker).
       const wikiName = companyName.value || ticker;
       const wiki = await fetchWikiSummary(wikiName);
       if (wiki) {
@@ -671,7 +618,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
       dxy: macroSeries.DTWEXBGS?.current ?? null,
       vix: macroSeries.VIXCLS?.current ?? null,
       sp500: macroSeries.SP500?.current ?? null,
-      // 3-month-ago snapshot for trend arrows
       previous: Object.fromEntries(
         FRED_SERIES.map((s) => [s, macroSeries[s]?.previous ?? null]),
       ) as Record<string, number | null>,
@@ -707,7 +653,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const card4Score = card4Sub.reduce((a, b) => a + b.s, 0) / card4Sub.length;
 
     const card5Sub = [
-      { k: "Analyst Consensus", v: consensusScore, s: consensusScore == null ? 5 : consensusScore <= 1.5 ? 10 : consensusScore <= 2.5 ? 7 : consensusScore <= 3.5 ? 4 : 1, source: YrecTrend.length ? "Yahoo" : null },
+      { k: "Analyst Consensus", v: consensusScore, s: consensusScore == null ? 5 : consensusScore <= 1.5 ? 10 : consensusScore <= 2.5 ? 7 : consensusScore <= 3.5 ? 4 : 1, source: consensusSource },
       { k: "Short Interest", v: shortPct.value, s: shortPct.value == null ? 5 : shortPct.value < 0.03 ? 10 : shortPct.value < 0.07 ? 7 : shortPct.value < 0.15 ? 4 : 1, source: shortPct.source },
       { k: "Upside to Target", v: upside, s: upside == null ? 5 : upside > 0.3 ? 10 : upside > 0.15 ? 7 : upside > 0 ? 4 : 1, source: targetPrice.source },
     ];
@@ -756,7 +702,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
       { axis: "Sentiment", value: +sentimentRisk.toFixed(1) },
     ];
 
-    // ────────────── Heuristic risks (until AI runs) ──────────────
+    // ────────────── Heuristic risks ──────────────
     const risks: { category: string; label: string; description: string; severity: "high" | "medium" | "low"; source: string }[] = [];
     if (beta.value != null && beta.value > 1.3) risks.push({ category: "Market", label: "High Beta", description: `Beta of ${beta.value.toFixed(2)} — moves ${((beta.value - 1) * 100).toFixed(0)}% more than the market.`, severity: beta.value > 1.8 ? "high" : "medium", source: beta.source || "Yahoo" });
     if (trailingPE.value != null && trailingPE.value > 30 && macro.treas10y != null && macro.treas10y > 4) risks.push({ category: "Market", label: "Rate Sensitivity", description: `High P/E (${trailingPE.value.toFixed(1)}) is vulnerable to elevated rates (10Y at ${macro.treas10y.toFixed(2)}%).`, severity: "medium", source: "FRED + " + (trailingPE.source || "Yahoo") });
@@ -769,7 +715,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const adv = (avgVol10.value || 0) * (currentPrice.value || 0);
     if (adv && adv < 10e6) risks.push({ category: "Liquidity", label: "Low Liquidity", description: `Avg daily $ volume of ~$${(adv / 1e6).toFixed(1)}M makes large positions hard to exit.`, severity: "medium", source: "Yahoo" });
 
-    // SEC reporting timeliness — only surface as a risk card when not "ok".
     if (sec?.ok && filingTimeliness.status !== "ok") {
       risks.push({
         category: "Regulatory",
@@ -804,6 +749,18 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const filled = trackedIndicators.filter((i) => i.value != null).length;
     const completeness = Math.round((filled / trackedIndicators.length) * 100);
 
+    // News merged from Polygon + Tiingo for the AI/news panel.
+    const mergedNews = [
+      ...(poly?.news || []).map((n: any) => ({
+        title: n.title, url: n.article_url || n.url, publishedDate: n.published_utc,
+        source: n.publisher?.name || "Polygon", description: n.description || null,
+      })),
+      ...(tg?.news || []).map((n: any) => ({
+        title: n.title, url: n.url, publishedDate: n.publishedDate,
+        source: n.source || "Tiingo", description: n.description || null,
+      })),
+    ].slice(0, 12);
+
     return {
       ticker, company,
       sources: ledger.toJSON(),
@@ -811,12 +768,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
         yahoo: yahoo?.ok || false,
         yahooChart: !!chart,
         yahooRateLimited: isYahooRateLimited(),
-        fmp: fmp?.ok || false,
-        fmpHasKey: fmp?.hasKey || false,
-        fmpRateLimited: fmp?.rateLimited || false,
-        av: av?.ok || false,
-        avHasKey: av?.hasKey || false,
-        avRateLimited: av?.rateLimited || false,
+        polygon: poly?.ok || false,
+        polygonHasKey: poly?.hasKey || false,
+        polygonRateLimited: poly?.rateLimited || false,
+        polygonUnauthorized: poly?.unauthorized || false,
+        tiingo: tg?.ok || false,
+        tiingoHasKey: tg?.hasKey || false,
+        tiingoRateLimited: tg?.rateLimited || false,
+        tiingoUnauthorized: tg?.unauthorized || false,
         sec: sec?.ok || false,
         secCik: sec?.cik || null,
         fred: fred?.ok || false,
@@ -846,9 +805,6 @@ export const analyzeStock = createServerFn({ method: "POST" })
       filingTimeliness,
       macro,
       analyst: {
-        // Yahoo recommendationTrend reports periods as "0m", "-1m", "-2m"...
-        // (offset in months from today). Convert each to an ISO date so the UI
-        // can render a real date instead of an opaque label.
         ratings: YrecTrend.slice(0, 6).map((rt: any) => {
           let dateIso: string | null = null;
           const period: string | undefined = rt?.period;
@@ -887,7 +843,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
         recentInsiderTx,
       },
       filings,
-      news: fmp?.news || [],
+      news: mergedNews,
     };
   });
 
