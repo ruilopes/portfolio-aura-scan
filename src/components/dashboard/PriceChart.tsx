@@ -132,10 +132,10 @@ export function PriceChart({
             />
             <YAxis
               yAxisId="price"
-              domain={["auto", "auto"]}
+              domain={yDomain}
               tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
               width={55}
-              tickFormatter={(v) => `$${Number(v).toFixed(0)}`}
+              tickFormatter={(v) => `$${Number(v).toFixed(2)}`}
             />
             <Tooltip
               contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }}
