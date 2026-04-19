@@ -220,16 +220,28 @@ function DashboardPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
             {[
               {
-                name: "FMP",
-                desc: "Primary: fundamentals, ratios, earnings, analysts",
-                ok: result?.sourceStatus?.fmp,
-                badge: result?.sourceStatus?.fmp ? "✅ Primary" : result?.sourceStatus?.fmpHasKey ? "✗ failed" : "— no key",
+                name: "Polygon.io",
+                desc: "Primary: fundamentals, technicals, price, news",
+                ok: result?.sourceStatus?.polygon,
+                badge: result?.sourceStatus?.polygon
+                  ? "✅ Active"
+                  : result?.sourceStatus?.polygonRateLimited
+                  ? "⚠️ Rate-limited"
+                  : result?.sourceStatus?.polygonUnauthorized
+                  ? "✗ free-tier blocked"
+                  : result?.sourceStatus?.polygonHasKey ? "✗ failed" : "— no key",
               },
               {
-                name: "Alpha Vantage",
-                desc: "Active fallback: technicals, RSI, MACD, overview",
-                ok: result?.sourceStatus?.av,
-                badge: result?.sourceStatus?.av ? "✅ Active" : result?.sourceStatus?.avHasKey ? "✗ failed" : "— no key",
+                name: "Tiingo",
+                desc: "Active fallback: ratios, margins, earnings, news NLP",
+                ok: result?.sourceStatus?.tiingo,
+                badge: result?.sourceStatus?.tiingo
+                  ? "✅ Active"
+                  : result?.sourceStatus?.tiingoRateLimited
+                  ? "⚠️ Rate-limited"
+                  : result?.sourceStatus?.tiingoUnauthorized
+                  ? "✗ paid-only"
+                  : result?.sourceStatus?.tiingoHasKey ? "✗ failed" : "— no key",
               },
               {
                 name: "SEC EDGAR",
@@ -340,8 +352,8 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
             )}
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <SourceBadge name="FMP" ok={result.sourceStatus.fmp} />
-              <SourceBadge name="Alpha Vantage" ok={result.sourceStatus.av} />
+              <SourceBadge name="Polygon" ok={result.sourceStatus.polygon} />
+              <SourceBadge name="Tiingo" ok={result.sourceStatus.tiingo} />
               <SourceBadge name="SEC EDGAR" ok={result.sourceStatus.sec} />
               <SourceBadge name="FRED" ok={result.sourceStatus.fred} />
               <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />

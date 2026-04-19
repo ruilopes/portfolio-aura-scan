@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 
 export interface AppSettings {
   anthropicKey: string;
-  fmpKey: string;
-  avKey: string;
   showConfidence: boolean;
-  showSecCrossCheck: boolean;
   showSourceAttribution: boolean;
   cacheMinutes: 5 | 15 | 60 | 1440;
 }
@@ -14,10 +11,7 @@ const KEY = "stockdash:settings";
 
 const DEFAULTS: AppSettings = {
   anthropicKey: "",
-  fmpKey: "",
-  avKey: "",
   showConfidence: true,
-  showSecCrossCheck: true,
   showSourceAttribution: true,
   cacheMinutes: 15,
 };
