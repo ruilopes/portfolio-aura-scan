@@ -12,7 +12,6 @@ export type SourceName =
   | "Tiingo"
   | "SEC EDGAR"
   | "FRED"
-  | "Wikipedia"
   | "computed";
 
 export type Indicator<T = number | null> = {
@@ -105,7 +104,7 @@ export class SourceLedger {
 
   toJSON() {
     const out: { source: SourceName; status: string; fields: string[]; lastFetched: string | null }[] = [];
-    const allSources: SourceName[] = ["Yahoo", "Yahoo Chart", "Polygon", "Tiingo", "SEC EDGAR", "FRED", "Wikipedia"];
+    const allSources: SourceName[] = ["Yahoo", "Yahoo Chart", "Polygon", "Tiingo", "SEC EDGAR", "FRED"];
     for (const s of allSources) {
       out.push({
         source: s,

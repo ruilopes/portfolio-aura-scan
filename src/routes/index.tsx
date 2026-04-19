@@ -27,7 +27,7 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Stock Analysis Dashboard — Multi-Source Risk Intelligence" },
-      { name: "description", content: "Free, keyless US-stock analysis: Yahoo Finance, SEC EDGAR, FRED, Wikipedia and Claude-powered risk intelligence." },
+      { name: "description", content: "Free, keyless US-stock analysis: Yahoo Finance, SEC EDGAR, FRED and Claude-powered risk intelligence." },
       { property: "og:title", content: "Stock Analysis Dashboard" },
       { property: "og:description", content: "Multi-source fundamental, technical and risk analysis for US stocks." },
     ],
@@ -135,7 +135,7 @@ function DashboardPage() {
               </h1>
             )}
             <p className="text-sm text-muted-foreground mt-1">
-              Keyless multi-source risk intelligence · Yahoo Finance · SEC EDGAR · FRED · Wikipedia
+              Keyless multi-source risk intelligence · Yahoo Finance · SEC EDGAR · FRED
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -272,12 +272,6 @@ function DashboardPage() {
                   ? "⚠️ Rate-limited"
                   : result?.sourceStatus?.yahooChart ? "✅ OK" : "✗ failed",
               },
-              {
-                name: "Wikipedia",
-                desc: "Company description fallback",
-                ok: result?.sourceStatus?.wiki,
-                badge: result?.sourceStatus?.wiki ? "✅ Used" : "—",
-              },
             ].map((s) => (
               <div key={s.name} className="glass-card p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -359,7 +353,6 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
               <SourceBadge name="FRED" ok={result.sourceStatus.fred} />
               <SourceBadge name="Yahoo" ok={result.sourceStatus.yahoo} />
               <SourceBadge name="Yahoo Chart" ok={result.sourceStatus.yahooChart} />
-              <SourceBadge name="Wikipedia" ok={result.sourceStatus.wiki} />
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               Last updated: {fmtDate(result.lastUpdated)} {new Date(result.lastUpdated).toLocaleTimeString()}
