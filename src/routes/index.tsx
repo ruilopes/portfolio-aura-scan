@@ -378,15 +378,16 @@ function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; 
         <h2 className="text-xl font-bold mb-4">Section 1 · Fundamental Analysis</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {result.cards.map((c: any) => (
-            <FundamentalCard
-              key={c.id}
-              title={c.title}
-              weight={c.weight}
-              score={c.score}
-              indicators={c.indicators}
-              source={c.source}
-              extras={c.extras}
-            />
+            <div key={c.id} id={`card-${c.id}`} className="scroll-mt-24">
+              <FundamentalCard
+                title={c.title}
+                weight={c.weight}
+                score={c.score}
+                indicators={c.indicators}
+                source={c.source}
+                extras={c.extras}
+              />
+            </div>
           ))}
         </div>
       </section>
