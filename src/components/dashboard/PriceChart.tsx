@@ -170,7 +170,6 @@ export function PriceChart({
             <Line yAxisId="price" type="monotone" dataKey="close" stroke="var(--color-primary)" strokeWidth={2} dot={false} name="Close" />
             <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="var(--color-warning)" strokeWidth={1.5} dot={false} name="SMA 50" />
             <Line yAxisId="price" type="monotone" dataKey="sma200" stroke="var(--color-danger)" strokeWidth={1.5} dot={false} strokeDasharray="4 4" name="SMA 200" />
-            {high52 && <ReferenceLine yAxisId="price" y={high52} stroke="var(--color-success)" strokeDasharray="2 4" label={{ value: `52w H ${fmtPrice(high52)}`, fill: "var(--color-success)", fontSize: 10, position: "right" }} />}
             {low52 && <ReferenceLine yAxisId="price" y={low52} stroke="var(--color-danger)" strokeDasharray="2 4" label={{ value: `52w L ${fmtPrice(low52)}`, fill: "var(--color-danger)", fontSize: 10, position: "right" }} />}
             {crossInWindow && (
               <ReferenceLine
