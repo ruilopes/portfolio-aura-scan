@@ -181,8 +181,18 @@ export function PriceChart({
       <div className="h-20 w-full -mt-2">
         <ResponsiveContainer>
           <ComposedChart data={chartData} margin={{ top: 0, right: 30, bottom: 5, left: 0 }}>
-            <XAxis dataKey="ts" type="number" scale="time" domain={xDomain} allowDataOverflow tick={false} axisLine={false} height={0} />
+            <XAxis
+              dataKey="date"
+              type="category"
+              domain={["dataMin", "dataMax"]}
+              allowDataOverflow={false}
+              tick={false}
+              axisLine={false}
+              height={0}
+            />
             <YAxis
+              domain={[0, "auto"]}
+              allowDataOverflow={false}
               tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
               width={55}
               tickFormatter={(v) => {
