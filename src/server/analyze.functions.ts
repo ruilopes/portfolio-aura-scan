@@ -640,14 +640,105 @@ export const analyzeStock = createServerFn({ method: "POST" })
       ) as Record<string, number | null>,
     };
 
+    // ────────────── Fair Value Models ──────────────
+    const cp2 = currentPrice.value;
+    const sharesOutstanding =
+      yRaw(Yks?.sharesOutstanding) ??
+      PolyTicker?.weighted_shares_outstanding ??
+      PolyTicker?.share_class_shares_outstanding ??
+      (marketCap.value && cp2 ? marketCap.value / cp2 : null);
+
+    const dcfValue: number | null = (() => {
+      const fcf = freeCashflow.value;
+      if (!fcf || fcf <= 0 || !sharesOutstanding || sharesOutstanding <= 0) return null;
+      const baseGrowth = revenueGrowth.value != null && revenueGrowth.value > 0 ? revenueGrowth.value : 0.05;
+      const growthRate5y = Math.min(0.25, baseGrowth * 0.8);
+      const terminalGrowthRate = 0.03;
+      const discountRate = 0.10;
+      const years = 5;
+      let projected = fcf;
+      let totalPV = 0;
+      for (let i = 1; i <= years; i++) {
+        projected *= (1 + growthRate5y);
+        totalPV += projected / Math.pow(1 + discountRate, i);
+      }
+      const terminalValue = (projected * (1 + terminalGrowthRate)) / (discountRate - terminalGrowthRate);
+      const terminalPV = terminalValue / Math.pow(1 + discountRate, years);
+      const v = (totalPV + terminalPV) / sharesOutstanding;
+      return isFinite(v) && v > 0 ? +v.toFixed(2) : null;
+    })();
+
+    const grahamValue: number | null = (() => {
+      const epsV = eps.value;
+      const equity = polyFinValue(PolyBalanceAnnual, "equity") ?? sec?.facts?.equity ?? null;
+      const bvps = equity && sharesOutstanding ? equity / sharesOutstanding : null;
+      if (!epsV || epsV <= 0 || !bvps || bvps <= 0) return null;
+      const v = Math.sqrt(22.5 * epsV * bvps);
+      return isFinite(v) && v > 0 ? +v.toFixed(2) : null;
+    })();
+
+    const lynchValue: number | null = (() => {
+      const epsV = eps.value;
+      const g = earningsGrowth.value ?? revenueGrowth.value;
+      if (!epsV || epsV <= 0 || g == null || g <= 0) return null;
+      const v = epsV * (g * 100);
+      return isFinite(v) && v > 0 ? +v.toFixed(2) : null;
+    })();
+
+    const sectorMedians: Record<string, number> = {
+      "Technology": 22, "Healthcare": 18, "Financials": 12, "Financial Services": 12,
+      "Consumer Discretionary": 16, "Consumer Cyclical": 16,
+      "Consumer Staples": 14, "Consumer Defensive": 14,
+      "Industrials": 15, "Energy": 8, "Materials": 11, "Basic Materials": 11,
+      "Utilities": 13, "Real Estate": 20, "Communication Services": 17,
+    };
+    const sectorMedian = (sector.value && sectorMedians[sector.value]) || 15;
+    const evEbitdaValue: number | null = (() => {
+      const ebitdaV = (() => {
+        const op = polyFinValue(PolyIncomeAnnual, "operating_income_loss");
+        const da = polyFinValue(PolyCashAnnual, "depreciation_and_amortization");
+        if (op != null && da != null) return op + da;
+        if (enterpriseValue.value && evEbitda.value) return enterpriseValue.value / evEbitda.value;
+        return null;
+      })();
+      if (!ebitdaV || ebitdaV <= 0 || !sharesOutstanding || sharesOutstanding <= 0) return null;
+      const implied = (ebitdaV * sectorMedian) / sharesOutstanding;
+      const netDebt = (totalDebt.value ?? 0) - (totalCash.value ?? 0);
+      const v = implied - netDebt / sharesOutstanding;
+      return isFinite(v) && v > 0 ? +v.toFixed(2) : null;
+    })();
+
+    const fvDiff = (v: number | null) => v != null && cp2 ? (v - cp2) / cp2 : null;
+    const fvModels = [
+      { name: "DCF (10% WACC)", value: dcfValue, vsCurrent: fvDiff(dcfValue), tooltip: "5-year FCF projection discounted at 10% WACC with 3% terminal growth.", note: dcfValue == null ? "Requires positive FCF" : null },
+      { name: "Graham Number", value: grahamValue, vsCurrent: fvDiff(grahamValue), tooltip: "Benjamin Graham's formula: sqrt(22.5 × EPS × BVPS). Best for value stocks with stable earnings.", note: grahamValue == null ? "Requires positive EPS & book value" : null },
+      { name: "Peter Lynch", value: lynchValue, vsCurrent: fvDiff(lynchValue), tooltip: "Lynch's method: EPS × earnings growth rate (PEG≈1).", note: lynchValue == null ? "Requires positive EPS & growth" : null },
+      { name: `EV/EBITDA vs Sector (${sectorMedian}×)`, value: evEbitdaValue, vsCurrent: fvDiff(evEbitdaValue), tooltip: "Applies sector median EV/EBITDA multiple to company's EBITDA, adjusted for net debt.", note: evEbitdaValue == null ? "Requires positive EBITDA" : null },
+    ];
+    const validVals = fvModels.map((m) => m.value).filter((v): v is number => v != null && v > 0);
+    const avgFairValue = validVals.length ? +(validVals.reduce((a, b) => a + b, 0) / validVals.length).toFixed(2) : null;
+    const avgFairValueVsCurrent = fvDiff(avgFairValue);
+
+    const marginOfSafety = avgFairValueVsCurrent;
+    const mosScore =
+      marginOfSafety == null ? 5 :
+      marginOfSafety > 0.20 ? 10 :
+      marginOfSafety > 0.10 ? 8 :
+      marginOfSafety > 0 ? 6 :
+      marginOfSafety > -0.10 ? 4 : 2;
+
     // ────────────── Card sub-scores (use waterfall values) ──────────────
     const card1Sub = [
       { k: "P/E TTM", v: trailingPE.value, s: score(trailingPE.value, [{ lt: 15, s: 10 }, { lt: 25, s: 7 }, { lt: 35, s: 4 }, { lt: Infinity, s: 1 }]), source: trailingPE.source },
       { k: "Forward P/E", v: forwardPE.value, s: score(forwardPE.value, [{ lt: 12, s: 10 }, { lt: 20, s: 7 }, { lt: 30, s: 4 }, { lt: Infinity, s: 1 }]), source: forwardPE.source },
       { k: "EV/EBITDA", v: evEbitda.value, s: score(evEbitda.value, [{ lt: 8, s: 10 }, { lt: 15, s: 7 }, { lt: 25, s: 4 }, { lt: Infinity, s: 1 }]), source: evEbitda.source },
       { k: "PEG", v: peg.value, s: peg.value != null && peg.value > 0 ? score(peg.value, [{ lt: 1, s: 10 }, { lt: 1.5, s: 7 }, { lt: 2, s: 4 }, { lt: Infinity, s: 1 }]) : 5, source: peg.source },
+      { k: "Margin of Safety", v: marginOfSafety, s: mosScore, source: avgFairValue != null ? "computed" : null },
     ];
-    const card1Score = card1Sub.reduce((a, b) => a + b.s, 0) / card1Sub.length;
+    // Weighted: first 4 indicators share 80%, MoS gets 20%
+    const card1Score =
+      ((card1Sub[0].s + card1Sub[1].s + card1Sub[2].s + card1Sub[3].s) / 4) * 0.8 +
+      card1Sub[4].s * 0.2;
 
     const card2Sub = [
       { k: "Gross Margin", v: grossMargins.value, s: sBand(grossMargins.value, 0.15, 0.3, 0.5), source: grossMargins.source },
