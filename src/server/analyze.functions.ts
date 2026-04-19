@@ -112,22 +112,59 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const PolyCashAnnual = PolyFinAnnual?.cash_flow_statement || null;
 
     // ────────────── Price + technicals (Yahoo Chart → Polygon → Tiingo) ──────────────
-    // Build a unified close-price series, preferring Yahoo, then Polygon, then Tiingo EOD.
-    const series =
-      chart?.series?.length ? chart.series :
-      PolyAggs.length ? PolyAggs.map((a) => ({ date: a.date, close: a.close, high: a.high, low: a.low, volume: a.volume })) :
-      tg?.eod?.length ? tg.eod.map((a) => ({ date: a.date, close: a.adjClose, high: a.high, low: a.low, volume: a.volume })) :
-      [];
+    // Unified 1-year OHLCV series. Yahoo Chart → Polygon → Tiingo EOD.
+    const series: { date: string; close: number; high: number; low: number; volume: number }[] =
+      chart?.series?.length
+        ? chart.series.map((p) => ({ date: p.date, close: p.close, high: p.high ?? p.close, low: p.low ?? p.close, volume: p.volume ?? 0 }))
+        : PolyAggs.length
+        ? PolyAggs.map((a) => ({ date: a.date, close: a.close, high: a.high, low: a.low, volume: a.volume }))
+        : tg?.eod?.length
+        ? tg.eod.map((a) => ({ date: a.date, close: a.adjClose, high: a.high, low: a.low, volume: a.volume }))
+        : [];
     const closes = series.map((p) => p.close).filter((c) => typeof c === "number" && isFinite(c));
+    const highs = series.map((p) => p.high);
+    const lows = series.map((p) => p.low);
     const sma50Arr = sma(closes, 50);
     const sma200Arr = sma(closes, 200);
-    const sixMo = Math.max(0, closes.length - 126);
-    const priceChart = series.slice(sixMo).map((p, i) => ({
+
+    // Rolling 20-day Bollinger Bands (2 std dev) per-day for the chart overlay.
+    const bbPeriod = 20;
+    const bbUpperArr: (number | null)[] = [];
+    const bbMidArr: (number | null)[] = [];
+    const bbLowerArr: (number | null)[] = [];
+    for (let i = 0; i < closes.length; i++) {
+      if (i < bbPeriod - 1) { bbUpperArr.push(null); bbMidArr.push(null); bbLowerArr.push(null); continue; }
+      const slice = closes.slice(i - bbPeriod + 1, i + 1);
+      const mean = slice.reduce((a, b) => a + b, 0) / bbPeriod;
+      const sd = Math.sqrt(slice.reduce((s, x) => s + (x - mean) ** 2, 0) / bbPeriod);
+      bbMidArr.push(mean); bbUpperArr.push(mean + 2 * sd); bbLowerArr.push(mean - 2 * sd);
+    }
+
+    // Send full 1-year OHLCV + overlays. The client range selector (1M/3M/6M/1Y)
+    // just slices this array — no refetch needed.
+    const priceChart = series.map((p, i) => ({
       date: p.date,
       close: p.close,
-      sma50: sma50Arr[sixMo + i],
-      sma200: sma200Arr[sixMo + i],
+      high: p.high,
+      low: p.low,
+      volume: p.volume,
+      sma50: sma50Arr[i],
+      sma200: sma200Arr[i],
+      bbUpper: bbUpperArr[i],
+      bbMid: bbMidArr[i],
+      bbLower: bbLowerArr[i],
     }));
+
+    // ── Golden / Death Cross detection (last 30 trading days) ──
+    let crossEvent: { type: "golden" | "death"; daysAgo: number; date: string } | null = null;
+    for (let i = 1; i < Math.min(30, sma50Arr.length); i++) {
+      const idx = sma50Arr.length - i;
+      const p50 = sma50Arr[idx - 1], p200 = sma200Arr[idx - 1];
+      const c50 = sma50Arr[idx], c200 = sma200Arr[idx];
+      if (p50 == null || p200 == null || c50 == null || c200 == null) continue;
+      if (p50 <= p200 && c50 > c200) { crossEvent = { type: "golden", daysAgo: i, date: series[idx]?.date || "" }; break; }
+      if (p50 >= p200 && c50 < c200) { crossEvent = { type: "death", daysAgo: i, date: series[idx]?.date || "" }; break; }
+    }
 
     const lastClose = closes[closes.length - 1] ?? null;
     const currentPrice = pick<number>([
@@ -139,14 +176,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
     ledger.record("price", currentPrice);
 
     const high52 = pick<number>([
+      { source: "Polygon", get: () => (highs.length ? Math.max(...highs.filter((h) => isFinite(h))) : null) },
+      { source: "Yahoo Chart", get: () => (highs.length ? Math.max(...highs.filter((h) => isFinite(h))) : null) },
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyTwoWeekHigh) },
-      { source: "Polygon", get: () => (PolyAggs.length ? Math.max(...PolyAggs.map((a) => a.high)) : null) },
-      { source: "Yahoo Chart", get: () => (closes.length ? Math.max(...closes) : null) },
     ]);
     const low52 = pick<number>([
+      { source: "Polygon", get: () => (lows.length ? Math.min(...lows.filter((l) => isFinite(l) && l > 0)) : null) },
+      { source: "Yahoo Chart", get: () => (lows.length ? Math.min(...lows.filter((l) => isFinite(l) && l > 0)) : null) },
       { source: "Yahoo", get: () => yRaw(Ysd?.fiftyTwoWeekLow) },
-      { source: "Polygon", get: () => (PolyAggs.length ? Math.min(...PolyAggs.map((a) => a.low)) : null) },
-      { source: "Yahoo Chart", get: () => (closes.length ? Math.min(...closes) : null) },
     ]);
     ledger.record("52w high", high52);
     ledger.record("52w low", low52);
@@ -212,7 +249,24 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const bb = pick<{ mid: number; upper: number; lower: number }>([
       { source: "computed", get: () => bollinger(closes, 20, 2) },
     ]);
-    const histVol = pick<number>([{ source: "computed", get: () => histVolatility(closes) }]);
+    // Windowed historical volatility (annualised, %).
+    const hvWindow = (n: number): number | null => {
+      if (closes.length < n + 1) return null;
+      const window = closes.slice(-n - 1);
+      const logRets: number[] = [];
+      for (let i = 1; i < window.length; i++) {
+        if (window[i] > 0 && window[i - 1] > 0) logRets.push(Math.log(window[i] / window[i - 1]));
+      }
+      if (logRets.length < 2) return null;
+      const mean = logRets.reduce((a, b) => a + b, 0) / logRets.length;
+      const variance = logRets.reduce((a, b) => a + (b - mean) ** 2, 0) / (logRets.length - 1);
+      return Math.sqrt(variance * 252);
+    };
+    const hv30 = hvWindow(30);
+    const hv90 = hvWindow(90);
+    const histVol = pick<number>([
+      { source: "computed", get: () => hv30 ?? histVolatility(closes) },
+    ]);
     const sma50Last = sma50Arr[sma50Arr.length - 1];
     const sma200Last = sma200Arr[sma200Arr.length - 1];
     const cp = currentPrice.value;
@@ -415,9 +469,13 @@ export const analyzeStock = createServerFn({ method: "POST" })
     );
 
     // ────────────── Risk extras ──────────────
-    const beta = pick<number>([
+    const reportedBeta = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.beta) ?? yRaw(Yks?.beta) },
-      { source: "Polygon", get: () => polyBeta(PolyAggs, poly?.spyAggs) },
+    ]);
+    const calculatedBeta = polyBeta(PolyAggs, poly?.spyAggs);
+    const beta = pick<number>([
+      { source: "Yahoo", get: () => reportedBeta.value },
+      { source: "Polygon", get: () => calculatedBeta },
     ]);
     const shortPct = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.shortPercentOfFloat) },
@@ -891,7 +949,13 @@ export const analyzeStock = createServerFn({ method: "POST" })
         volume: volume.value, avgVol: avgVol.value, avgVol10: avgVol10.value,
         fiftyDayAvg: fiftyDayAvg.value, twoHundredDayAvg: twoHundredDayAvg.value,
         change: change.value, changePct: changePctInd.value,
+        hv30, hv90,
+        beta: beta.value,
+        betaSource: beta.source,
+        reportedBeta: reportedBeta.value,
+        calculatedBeta,
       },
+      crossEvent,
       priceChart,
       composite,
       summary,
