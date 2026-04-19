@@ -71,7 +71,9 @@ export function PriceChart({
     const lows = chartData.map((p) => p.low ?? p.close).filter((v): v is number => v != null);
     const highs = chartData.map((p) => p.high ?? p.close).filter((v): v is number => v != null);
     if (lows.length && highs.length) {
-      return [Math.min(...lows), Math.max(...highs)];
+      const lo = Math.min(...lows);
+      const hi = Math.max(...highs);
+      return [lo - (hi - lo) * 0.05, hi];
     }
     return [0, 0];
   }, [chartData]);
