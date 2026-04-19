@@ -47,10 +47,25 @@ export function PriceChart({
     () =>
       visible.map((p) => ({
         ...p,
+        ts: new Date(p.date).getTime(),
         bbBand: p.bbUpper != null && p.bbLower != null ? p.bbUpper - p.bbLower : null,
       })),
     [visible],
   );
+
+  // Fixed X-axis window: exactly 52 weeks ago → today. Shorter ranges zoom from the right.
+  const xDomain = useMemo<[number, number]>(() => {
+    const today = Date.now();
+    const fullStart = today - 365 * 24 * 60 * 60 * 1000;
+    const rangeMs: Record<Range, number> = {
+      "1M": 30 * 24 * 60 * 60 * 1000,
+      "3M": 91 * 24 * 60 * 60 * 1000,
+      "6M": 182 * 24 * 60 * 60 * 1000,
+      "1Y": 365 * 24 * 60 * 60 * 1000,
+    };
+    const start = range === "1Y" ? fullStart : today - rangeMs[range];
+    return [start, today];
+  }, [range]);
 
   const lastClose = visible[visible.length - 1]?.close ?? currentPrice;
   const cp = currentPrice ?? lastClose ?? 0;
