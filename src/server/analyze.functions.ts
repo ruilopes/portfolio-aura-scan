@@ -918,7 +918,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const adv = (avgVol10.value || 0) * (currentPrice.value || 0);
     if (adv && adv < 10e6) risks.push({ category: "Liquidity", label: "Low Liquidity", description: `Avg daily $ volume of ~$${(adv / 1e6).toFixed(1)}M makes large positions hard to exit.`, severity: "medium", source: "Yahoo" });
 
-    if (sec?.ok && filingTimeliness.status !== "ok") {
+    if (isUS && sec?.ok && filingTimeliness.status !== "ok") {
       risks.push({
         category: "Regulatory",
         label: filingTimeliness.status === "missing" ? "SEC Reporting — Missing Filing" : "SEC Reporting — Late Filing",
@@ -926,6 +926,47 @@ export const analyzeStock = createServerFn({ method: "POST" })
         severity: filingTimeliness.status === "missing" ? "high" : "medium",
         source: "SEC EDGAR",
       });
+    }
+
+    // Non-US: equivalent staleness check using Polygon's last annual financials.
+    let euFilingTimeliness: { status: "ok" | "stale"; label: string; detail: string } | null = null;
+    if (!isUS) {
+      const lastAnnual = poly?.financials?.[0];
+      const periodEnd: string | null = lastAnnual?.end_date || lastAnnual?.fiscal_period || null;
+      if (periodEnd) {
+        const ageDays = (Date.now() - new Date(periodEnd).getTime()) / 86400000;
+        if (isFinite(ageDays) && ageDays > 365) {
+          euFilingTimeliness = {
+            status: "stale",
+            label: "Regulatory Filing — Stale annual report",
+            detail: `Most recent annual report (period ending ${periodEnd}) is over 12 months old.`,
+          };
+          risks.push({
+            category: "Regulatory",
+            label: euFilingTimeliness.label,
+            description: euFilingTimeliness.detail,
+            severity: "high",
+            source: "Polygon",
+          });
+        } else {
+          euFilingTimeliness = {
+            status: "ok",
+            label: "Regulatory filings up to date",
+            detail: `Latest annual report period ends ${periodEnd}.`,
+          };
+        }
+      }
+    }
+
+    // Low-liquidity warning for small EU markets (avg daily volume in local
+    // currency below ~€1M).
+    let liquidityWarning: { threshold: number; avgDailyValue: number } | null = null;
+    if (!isUS) {
+      const advLocal = (avgVol10.value || avgVol.value || 0) * (currentPrice.value || 0);
+      const threshold = 1e6; // €1M / £1M
+      if (advLocal > 0 && advLocal < threshold) {
+        liquidityWarning = { threshold, avgDailyValue: advLocal };
+      }
     }
 
     const positives: string[] = [];
