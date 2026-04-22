@@ -312,10 +312,17 @@ function DashboardPage() {
   );
 }
 
-function DashboardContent({ result, onOpenSettings }: { result: AnalysisResult; onOpenSettings: () => void }) {
-  
+function DashboardContent({ result, onOpenSettings, displayCurrency }: { result: AnalysisResult; onOpenSettings: () => void; displayCurrency: "local" | "USD" }) {
+
   const riskTone = result.composite >= 65 ? "success" : result.composite >= 35 ? "warning" : "danger";
   const riskLabel = result.composite >= 65 ? "🟢 Low Risk" : result.composite >= 35 ? "🟡 Medium Risk" : "🔴 High Risk";
+
+  // Resolve display currency + symbol + conversion factor.
+  const localCcy = result.currency as Currency;
+  const showCcy: Currency = displayCurrency === "USD" ? "USD" : localCcy;
+  const ccySymbol = CURRENCY_SYMBOL[showCcy];
+  const conv = (v: number | null | undefined): number | null =>
+    v == null ? null : convertCurrency(v, localCcy, showCcy, result.fxRates as any);
 
   // Trim payload sent to Claude — keep semantically rich fields only
   const aiPayload = useMemo(() => ({
