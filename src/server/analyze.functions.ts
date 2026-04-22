@@ -693,16 +693,42 @@ export const analyzeStock = createServerFn({ method: "POST" })
 
     // ────────────── Macro (FRED) ──────────────
     const macroSeries = fred?.series || ({} as Record<string, any>);
+
+    // FX rates (USD per 1 unit of EUR / GBP) for the local↔USD currency toggle.
+    const eurUsd = macroSeries.DEXUSEU?.current ?? null;
+    const gbpUsd = macroSeries.DEXUSUK?.current ?? null;
+    const fxRates = { USD: 1, EUR: eurUsd, GBP: gbpUsd } as Record<"USD" | "EUR" | "GBP", number | null>;
+    const fxRate = currency === "USD" ? 1 : fxRates[currency];
+
+    // Regional policy rate + 10Y bond proxy.
+    // We re-use US Treasury yields for all markets (EU sovereign yields not on
+    // FRED CSV without a key); only re-label them. Policy rate switches to
+    // ECBDFR for EUR markets and SONIA for GBP.
+    const policyRate =
+      currency === "EUR" ? (macroSeries.ECBDFR?.current ?? null)
+      : currency === "GBP" ? (macroSeries.IUDSOIA?.current ?? null)
+      : (macroSeries.FEDFUNDS?.current ?? null);
     const macro = {
+      // Region-aware
+      market,
+      currency,
+      policyRate,                     // local short-rate
+      policyRateLabel,                // e.g. "ECB Rate"
+      tenYearLabel,                   // e.g. "10Y Bund"
+      // Always-on fields (US base)
       fedFunds: macroSeries.FEDFUNDS?.current ?? null,
       treas10y: macroSeries.DGS10?.current ?? null,
       treas2y: macroSeries.DGS2?.current ?? null,
       yieldCurve: macroSeries.T10Y2Y?.current ?? null,
-      cpi: macroSeries.CPIAUCSL?.current ?? null,
+      cpi: currency === "EUR" ? (macroSeries.CPHPTT01EZM659N?.current ?? macroSeries.CPIAUCSL?.current ?? null)
+         : currency === "GBP" ? (macroSeries.GBRCPIALLMINMEI?.current ?? macroSeries.CPIAUCSL?.current ?? null)
+         : (macroSeries.CPIAUCSL?.current ?? null),
       unemployment: macroSeries.UNRATE?.current ?? null,
       dxy: macroSeries.DTWEXBGS?.current ?? null,
       vix: macroSeries.VIXCLS?.current ?? null,
       sp500: macroSeries.SP500?.current ?? null,
+      eurUsd,
+      gbpUsd,
       previous: Object.fromEntries(
         FRED_SERIES.map((s) => [s, macroSeries[s]?.previous ?? null]),
       ) as Record<string, number | null>,
