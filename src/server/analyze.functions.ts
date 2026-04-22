@@ -19,6 +19,11 @@ import { fetchSECBundle, checkFilingTimeliness } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
 import { sma, rsi, macdCalc, bollinger, histVolatility } from "./sources/technicals.server";
 import { pick, SourceLedger, setYahooDemoted, type Indicator } from "./sources/waterfall.server";
+import {
+  detectMarket, MARKET_CURRENCY, MARKET_BENCHMARK, MARKET_EXCHANGE_NAME,
+  MARKET_FLAG, MARKET_TENYEAR_LABEL, CURRENCY_POLICY_RATE_LABEL,
+  SECTOR_MEDIANS_EUROPE, polygonLocale,
+} from "@/lib/markets";
 
 // ────────────────────── small utility helpers ──────────────────────
 const score = (v: number | null, breaks: { lt: number; s: number }[]) => {
@@ -38,7 +43,7 @@ const sBand = (v: number | null, low: number, mid: number, high: number) => {
 export const analyzeStock = createServerFn({ method: "POST" })
   .inputValidator((d: { ticker: string; forceYahooRetry?: boolean }) => {
     const t = (d?.ticker || "").trim().toUpperCase();
-    if (!/^[A-Z.\-]{1,10}$/.test(t)) throw new Error("Invalid ticker");
+    if (!/^[A-Z0-9.\-]{1,12}$/.test(t)) throw new Error("Invalid ticker");
     return {
       ticker: t,
       forceYahooRetry: !!d?.forceYahooRetry,
@@ -48,6 +53,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const { ticker, forceYahooRetry } = data;
     const ledger = new SourceLedger();
 
+    // Detect market from ticker suffix (US tickers have no suffix).
+    const market = detectMarket(ticker);
+    const currency = MARKET_CURRENCY[market];
+    const benchmark = MARKET_BENCHMARK[market];
+    const exchangeName = MARKET_EXCHANGE_NAME[market];
+    const marketFlag = MARKET_FLAG[market];
+    const tenYearLabel = MARKET_TENYEAR_LABEL[market];
+    const policyRateLabel = CURRENCY_POLICY_RATE_LABEL[currency];
+    const isUS = market === "US";
+
     // If user clicked "Retry Yahoo", clear the rate-limit flag before fetching.
     if (forceYahooRetry) resetYahooRateLimit();
 
@@ -55,9 +70,10 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const [yahooR, chartR, polyR, tgR, secR, fredR] = await Promise.allSettled([
       fetchYahooBundle(ticker),
       fetchYahooChart(ticker),
-      fetchPolygonBundle(ticker),
+      fetchPolygonBundle(ticker, { locale: polygonLocale(market) }),
       fetchTiingoBundle(ticker),
-      fetchSECBundle(ticker),
+      // SEC EDGAR only covers US-listed companies.
+      isUS ? fetchSECBundle(ticker) : Promise.resolve({ ok: false, cik: null, submissions: null, facts: null }),
       fetchFredBundle(),
     ]);
 
@@ -472,11 +488,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const reportedBeta = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.beta) ?? yRaw(Yks?.beta) },
     ]);
-    const calculatedBeta = polyBeta(PolyAggs, poly?.spyAggs);
-    const beta = pick<number>([
-      { source: "Yahoo", get: () => reportedBeta.value },
-      { source: "Polygon", get: () => calculatedBeta },
-    ]);
+    // Beta vs SPY only meaningful for US tickers — EU stocks need their local
+    // index, which Polygon's free/standard plan doesn't expose. Show N/A for
+    // EU rather than a misleading vs-SPY beta.
+    const calculatedBeta = isUS ? polyBeta(PolyAggs, poly?.spyAggs) : null;
+    const beta = isUS
+      ? pick<number>([
+          { source: "Yahoo", get: () => reportedBeta.value },
+          { source: "Polygon", get: () => calculatedBeta },
+        ])
+      : { value: null as number | null, source: null as any };
     const shortPct = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.shortPercentOfFloat) },
     ]);
@@ -672,16 +693,42 @@ export const analyzeStock = createServerFn({ method: "POST" })
 
     // ────────────── Macro (FRED) ──────────────
     const macroSeries = fred?.series || ({} as Record<string, any>);
+
+    // FX rates (USD per 1 unit of EUR / GBP) for the local↔USD currency toggle.
+    const eurUsd = macroSeries.DEXUSEU?.current ?? null;
+    const gbpUsd = macroSeries.DEXUSUK?.current ?? null;
+    const fxRates = { USD: 1, EUR: eurUsd, GBP: gbpUsd } as Record<"USD" | "EUR" | "GBP", number | null>;
+    const fxRate = currency === "USD" ? 1 : fxRates[currency];
+
+    // Regional policy rate + 10Y bond proxy.
+    // We re-use US Treasury yields for all markets (EU sovereign yields not on
+    // FRED CSV without a key); only re-label them. Policy rate switches to
+    // ECBDFR for EUR markets and SONIA for GBP.
+    const policyRate =
+      currency === "EUR" ? (macroSeries.ECBDFR?.current ?? null)
+      : currency === "GBP" ? (macroSeries.IUDSOIA?.current ?? null)
+      : (macroSeries.FEDFUNDS?.current ?? null);
     const macro = {
+      // Region-aware
+      market,
+      currency,
+      policyRate,                     // local short-rate
+      policyRateLabel,                // e.g. "ECB Rate"
+      tenYearLabel,                   // e.g. "10Y Bund"
+      // Always-on fields (US base)
       fedFunds: macroSeries.FEDFUNDS?.current ?? null,
       treas10y: macroSeries.DGS10?.current ?? null,
       treas2y: macroSeries.DGS2?.current ?? null,
       yieldCurve: macroSeries.T10Y2Y?.current ?? null,
-      cpi: macroSeries.CPIAUCSL?.current ?? null,
+      cpi: currency === "EUR" ? (macroSeries.CPHPTT01EZM659N?.current ?? macroSeries.CPIAUCSL?.current ?? null)
+         : currency === "GBP" ? (macroSeries.GBRCPIALLMINMEI?.current ?? macroSeries.CPIAUCSL?.current ?? null)
+         : (macroSeries.CPIAUCSL?.current ?? null),
       unemployment: macroSeries.UNRATE?.current ?? null,
       dxy: macroSeries.DTWEXBGS?.current ?? null,
       vix: macroSeries.VIXCLS?.current ?? null,
       sp500: macroSeries.SP500?.current ?? null,
+      eurUsd,
+      gbpUsd,
       previous: Object.fromEntries(
         FRED_SERIES.map((s) => [s, macroSeries[s]?.previous ?? null]),
       ) as Record<string, number | null>,
@@ -732,13 +779,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
       return isFinite(v) && v > 0 ? +v.toFixed(2) : null;
     })();
 
-    const sectorMedians: Record<string, number> = {
+    const sectorMediansUS: Record<string, number> = {
       "Technology": 22, "Healthcare": 18, "Financials": 12, "Financial Services": 12,
       "Consumer Discretionary": 16, "Consumer Cyclical": 16,
       "Consumer Staples": 14, "Consumer Defensive": 14,
       "Industrials": 15, "Energy": 8, "Materials": 11, "Basic Materials": 11,
       "Utilities": 13, "Real Estate": 20, "Communication Services": 17,
     };
+    const sectorMedians = isUS ? sectorMediansUS : SECTOR_MEDIANS_EUROPE;
     const sectorMedian = (sector.value && sectorMedians[sector.value]) || 15;
     const evEbitdaValue: number | null = (() => {
       const ebitdaV = (() => {
@@ -870,7 +918,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const adv = (avgVol10.value || 0) * (currentPrice.value || 0);
     if (adv && adv < 10e6) risks.push({ category: "Liquidity", label: "Low Liquidity", description: `Avg daily $ volume of ~$${(adv / 1e6).toFixed(1)}M makes large positions hard to exit.`, severity: "medium", source: "Yahoo" });
 
-    if (sec?.ok && filingTimeliness.status !== "ok") {
+    if (isUS && sec?.ok && filingTimeliness.status !== "ok") {
       risks.push({
         category: "Regulatory",
         label: filingTimeliness.status === "missing" ? "SEC Reporting — Missing Filing" : "SEC Reporting — Late Filing",
@@ -878,6 +926,47 @@ export const analyzeStock = createServerFn({ method: "POST" })
         severity: filingTimeliness.status === "missing" ? "high" : "medium",
         source: "SEC EDGAR",
       });
+    }
+
+    // Non-US: equivalent staleness check using Polygon's last annual financials.
+    let euFilingTimeliness: { status: "ok" | "stale"; label: string; detail: string } | null = null;
+    if (!isUS) {
+      const lastAnnual = poly?.financials?.[0];
+      const periodEnd: string | null = lastAnnual?.end_date || lastAnnual?.fiscal_period || null;
+      if (periodEnd) {
+        const ageDays = (Date.now() - new Date(periodEnd).getTime()) / 86400000;
+        if (isFinite(ageDays) && ageDays > 365) {
+          euFilingTimeliness = {
+            status: "stale",
+            label: "Regulatory Filing — Stale annual report",
+            detail: `Most recent annual report (period ending ${periodEnd}) is over 12 months old.`,
+          };
+          risks.push({
+            category: "Regulatory",
+            label: euFilingTimeliness.label,
+            description: euFilingTimeliness.detail,
+            severity: "high",
+            source: "Polygon",
+          });
+        } else {
+          euFilingTimeliness = {
+            status: "ok",
+            label: "Regulatory filings up to date",
+            detail: `Latest annual report period ends ${periodEnd}.`,
+          };
+        }
+      }
+    }
+
+    // Low-liquidity warning for small EU markets (avg daily volume in local
+    // currency below ~€1M).
+    let liquidityWarning: { threshold: number; avgDailyValue: number } | null = null;
+    if (!isUS) {
+      const advLocal = (avgVol10.value || avgVol.value || 0) * (currentPrice.value || 0);
+      const threshold = 1e6; // €1M / £1M
+      if (advLocal > 0 && advLocal < threshold) {
+        liquidityWarning = { threshold, avgDailyValue: advLocal };
+      }
     }
 
     const positives: string[] = [];
@@ -918,6 +1007,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
 
     return {
       ticker, company,
+      market,
+      currency,
+      marketFlag,
+      exchangeName,
+      benchmark,
+      fxRates,
+      fxRate,
+      isUS,
+      liquidityWarning,
+      euFilingTimeliness,
       sources: ledger.toJSON(),
       sourceStatus: {
         yahoo: yahoo?.ok || false,

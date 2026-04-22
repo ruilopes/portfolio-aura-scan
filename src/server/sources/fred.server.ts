@@ -63,6 +63,14 @@ export const FRED_SERIES = [
   "DTWEXBGS",
   "VIXCLS",
   "SP500",
+  // European macro
+  "ECBDFR",            // ECB Deposit Facility Rate (%)
+  "CPHPTT01EZM659N",   // Eurozone HICP YoY (%)
+  "DEXUSEU",           // USD per EUR
+  // UK macro
+  "IUDSOIA",           // BoE SONIA / policy proxy (%)
+  "GBRCPIALLMINMEI",   // UK CPI index
+  "DEXUSUK",           // USD per GBP
 ] as const;
 
 export async function fetchFredBundle(): Promise<FredBundle> {

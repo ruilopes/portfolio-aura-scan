@@ -1,4 +1,4 @@
-import { parseYahooDate, fmtPrice, fmtPct } from "@/lib/format";
+import { parseYahooDate, fmtPriceCcy, fmtPct } from "@/lib/format";
 
 interface Rating { date: string; buy: number; hold: number; sell: number }
 interface Filing { form: string; filingDate: string; accession: string; primaryDoc: string }
@@ -13,9 +13,12 @@ interface Props {
   nextEPSEst: number | null;
   filings: Filing[];
   cik: string | null;
+  currencySymbol?: string;
+  filingsLabel?: string;
 }
 
 export function AnalystIntelligence(p: Props) {
+  const ccy = p.currencySymbol ?? "$";
   return (
     <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="glass-card p-5 lg:col-span-2">
@@ -31,7 +34,7 @@ export function AnalystIntelligence(p: Props) {
           </div>
           <div>
             <div className="text-xs text-muted-foreground">Price Target</div>
-            <div className="font-semibold">{fmtPrice(p.targetPrice)}</div>
+            <div className="font-semibold">{fmtPriceCcy(p.targetPrice, ccy)}</div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground">Upside</div>
@@ -77,7 +80,7 @@ export function AnalystIntelligence(p: Props) {
           <div className="text-2xl font-bold">{parseYahooDate(p.nextEarnings)}</div>
           {p.nextEPSEst != null && (
             <div className="text-sm text-muted-foreground mt-1">
-              Expected EPS: <span className="text-foreground font-medium">${p.nextEPSEst.toFixed(2)}</span>
+              Expected EPS: <span className="text-foreground font-medium">{ccy}{p.nextEPSEst.toFixed(2)}</span>
             </div>
           )}
         </div>

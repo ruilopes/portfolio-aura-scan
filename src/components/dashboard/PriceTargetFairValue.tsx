@@ -1,4 +1,4 @@
-import { fmtPrice, fmtPct, fmtPctRaw } from "@/lib/format";
+import { fmtPriceCcy, fmtPct, fmtPctRaw } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export interface FairValueModel {
@@ -30,6 +30,7 @@ interface Props {
   current: number | null;
   priceTarget: PriceTargetData;
   fairValue: FairValueData;
+  currencySymbol?: string;
 }
 
 const upsideTone = (v: number | null) => {
@@ -49,7 +50,7 @@ const fairTone = (v: number | null) => {
   return { tone: "text-danger", emoji: "🔴", label: "Significantly overvalued" };
 };
 
-function TargetRangeBar({ low, high, current, consensus }: { low: number | null; high: number | null; current: number | null; consensus: number | null }) {
+function TargetRangeBar({ low, high, current, consensus, ccy }: { low: number | null; high: number | null; current: number | null; consensus: number | null; ccy: string }) {
   if (low == null || high == null || current == null || high <= low) {
     return <div className="text-xs text-muted-foreground italic">Range data unavailable</div>;
   }
@@ -75,7 +76,7 @@ function TargetRangeBar({ low, high, current, consensus }: { low: number | null;
         <div
           className="absolute -top-1 w-3 h-4 rounded-sm bg-foreground border border-background"
           style={{ left: `calc(${curPct}% - 6px)` }}
-          title={`Current: ${fmtPrice(current)}`}
+          title={`Current: ${fmtPriceCcy(current, ccy)}`}
         />
         {/* Consensus marker */}
         {tgtPct != null && (
@@ -85,18 +86,18 @@ function TargetRangeBar({ low, high, current, consensus }: { low: number | null;
               isUpside ? "bg-success" : "bg-danger",
             )}
             style={{ left: `calc(${tgtPct}% - 6px)` }}
-            title={`Target: ${fmtPrice(consensus)}`}
+            title={`Target: ${fmtPriceCcy(consensus, ccy)}`}
           />
         )}
       </div>
       <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
-        <span>{fmtPrice(low)}</span>
-        <span>{fmtPrice(high)}</span>
+        <span>{fmtPriceCcy(low, ccy)}</span>
+        <span>{fmtPriceCcy(high, ccy)}</span>
       </div>
       <div className="flex gap-3 text-[11px] tabular-nums">
-        <span><span className="inline-block w-2 h-2 bg-foreground mr-1 align-middle" />Current {fmtPrice(current)}</span>
+        <span><span className="inline-block w-2 h-2 bg-foreground mr-1 align-middle" />Current {fmtPriceCcy(current, ccy)}</span>
         {consensus != null && (
-          <span><span className={cn("inline-block w-2 h-2 rounded-full mr-1 align-middle", isUpside ? "bg-success" : "bg-danger")} />Target {fmtPrice(consensus)}</span>
+          <span><span className={cn("inline-block w-2 h-2 rounded-full mr-1 align-middle", isUpside ? "bg-success" : "bg-danger")} />Target {fmtPriceCcy(consensus, ccy)}</span>
         )}
       </div>
     </div>
@@ -127,7 +128,7 @@ function AnalystBreakdown({ b }: { b: NonNullable<PriceTargetData["breakdown"]> 
   );
 }
 
-export function PriceTargetFairValue({ current, priceTarget, fairValue }: Props) {
+export function PriceTargetFairValue({ current, priceTarget, fairValue, currencySymbol = "$" }: Props) {
   const ups = upsideTone(priceTarget.upside);
   const avgTone = fairTone(fairValue.averageVsCurrent);
 
@@ -143,22 +144,22 @@ export function PriceTargetFairValue({ current, priceTarget, fairValue }: Props)
           </div>
 
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Current price</span><span className="font-medium tabular-nums">{fmtPrice(current)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Current price</span><span className="font-medium tabular-nums">{fmtPriceCcy(current, currencySymbol)}</span></div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Consensus target</span>
               <span className="font-medium tabular-nums">
-                {fmtPrice(priceTarget.consensus)}{" "}
+                {fmtPriceCcy(priceTarget.consensus, currencySymbol)}{" "}
                 {priceTarget.upside != null && (
                   <span className={ups.tone}>{priceTarget.upside >= 0 ? "↑" : "↓"} {priceTarget.upside >= 0 ? "+" : ""}{fmtPctRaw(priceTarget.upside * 100)}</span>
                 )}
               </span>
             </div>
-            <div className="flex justify-between"><span className="text-muted-foreground">High target</span><span className="font-medium tabular-nums">{fmtPrice(priceTarget.high)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Low target</span><span className="font-medium tabular-nums">{fmtPrice(priceTarget.low)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">High target</span><span className="font-medium tabular-nums">{fmtPriceCcy(priceTarget.high, currencySymbol)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Low target</span><span className="font-medium tabular-nums">{fmtPriceCcy(priceTarget.low, currencySymbol)}</span></div>
           </div>
 
           <div className="pt-2">
-            <TargetRangeBar low={priceTarget.low} high={priceTarget.high} current={current} consensus={priceTarget.consensus} />
+            <TargetRangeBar low={priceTarget.low} high={priceTarget.high} current={current} consensus={priceTarget.consensus} ccy={currencySymbol} />
           </div>
 
           {priceTarget.breakdown && (priceTarget.breakdown.strongBuy + priceTarget.breakdown.buy + priceTarget.breakdown.hold + priceTarget.breakdown.sell + priceTarget.breakdown.strongSell) > 0 ? (
@@ -194,7 +195,7 @@ export function PriceTargetFairValue({ current, priceTarget, fairValue }: Props)
                 <div key={m.name} className="rounded-lg border border-border/50 bg-background/40 p-3" title={m.tooltip}>
                   <div className="text-xs font-semibold text-muted-foreground">{m.name}</div>
                   <div className="text-lg font-bold tabular-nums mt-1">
-                    {m.value != null ? fmtPrice(m.value) : <span className="text-sm text-muted-foreground">N/A</span>}
+                    {m.value != null ? fmtPriceCcy(m.value, currencySymbol) : <span className="text-sm text-muted-foreground">N/A</span>}
                   </div>
                   {m.vsCurrent != null ? (
                     <div className={cn("text-xs tabular-nums mt-0.5", t.tone)}>
@@ -227,7 +228,7 @@ export function PriceTargetFairValue({ current, priceTarget, fairValue }: Props)
                     return (
                       <tr key={m.name} className="border-b border-border/30">
                         <td className="py-1.5">{m.name}</td>
-                        <td className="text-right tabular-nums">{m.value != null ? fmtPrice(m.value) : "N/A"}</td>
+                        <td className="text-right tabular-nums">{m.value != null ? fmtPriceCcy(m.value, currencySymbol) : "N/A"}</td>
                         <td className={cn("text-right tabular-nums", m.vsCurrent != null ? t.tone : "text-muted-foreground")}>
                           {m.vsCurrent != null ? `${m.vsCurrent >= 0 ? "+" : ""}${fmtPctRaw(m.vsCurrent * 100)}` : "—"}
                         </td>
@@ -239,7 +240,7 @@ export function PriceTargetFairValue({ current, priceTarget, fairValue }: Props)
                   })}
                   <tr className="font-semibold">
                     <td className="py-2">Average Fair Value</td>
-                    <td className="text-right tabular-nums">{fairValue.average != null ? fmtPrice(fairValue.average) : "N/A"}</td>
+                    <td className="text-right tabular-nums">{fairValue.average != null ? fmtPriceCcy(fairValue.average, currencySymbol) : "N/A"}</td>
                     <td className={cn("text-right tabular-nums", fairValue.averageVsCurrent != null ? avgTone.tone : "text-muted-foreground")}>
                       {fairValue.averageVsCurrent != null ? `${fairValue.averageVsCurrent >= 0 ? "+" : ""}${fmtPctRaw(fairValue.averageVsCurrent * 100)}` : "—"}
                     </td>
