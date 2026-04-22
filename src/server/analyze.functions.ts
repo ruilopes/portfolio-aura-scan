@@ -488,11 +488,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const reportedBeta = pick<number>([
       { source: "Yahoo", get: () => yRaw(Ysd?.beta) ?? yRaw(Yks?.beta) },
     ]);
-    const calculatedBeta = polyBeta(PolyAggs, poly?.spyAggs);
-    const beta = pick<number>([
-      { source: "Yahoo", get: () => reportedBeta.value },
-      { source: "Polygon", get: () => calculatedBeta },
-    ]);
+    // Beta vs SPY only meaningful for US tickers — EU stocks need their local
+    // index, which Polygon's free/standard plan doesn't expose. Show N/A for
+    // EU rather than a misleading vs-SPY beta.
+    const calculatedBeta = isUS ? polyBeta(PolyAggs, poly?.spyAggs) : null;
+    const beta = isUS
+      ? pick<number>([
+          { source: "Yahoo", get: () => reportedBeta.value },
+          { source: "Polygon", get: () => calculatedBeta },
+        ])
+      : { value: null as number | null, source: null as any };
     const shortPct = pick<number>([
       { source: "Yahoo", get: () => yRaw(Yks?.shortPercentOfFloat) },
     ]);
@@ -748,13 +753,14 @@ export const analyzeStock = createServerFn({ method: "POST" })
       return isFinite(v) && v > 0 ? +v.toFixed(2) : null;
     })();
 
-    const sectorMedians: Record<string, number> = {
+    const sectorMediansUS: Record<string, number> = {
       "Technology": 22, "Healthcare": 18, "Financials": 12, "Financial Services": 12,
       "Consumer Discretionary": 16, "Consumer Cyclical": 16,
       "Consumer Staples": 14, "Consumer Defensive": 14,
       "Industrials": 15, "Energy": 8, "Materials": 11, "Basic Materials": 11,
       "Utilities": 13, "Real Estate": 20, "Communication Services": 17,
     };
+    const sectorMedians = isUS ? sectorMediansUS : SECTOR_MEDIANS_EUROPE;
     const sectorMedian = (sector.value && sectorMedians[sector.value]) || 15;
     const evEbitdaValue: number | null = (() => {
       const ebitdaV = (() => {
