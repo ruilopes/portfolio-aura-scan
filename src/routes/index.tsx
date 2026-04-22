@@ -263,9 +263,11 @@ function DashboardPage() {
               },
               {
                 name: "SEC EDGAR",
-                desc: "Active: historical financials, filings",
+                desc: "Active: historical financials, filings (US only)",
                 ok: result?.sourceStatus?.sec,
-                badge: result?.sourceStatus?.sec ? "✅ Active" : "✗ failed",
+                badge: result && result.market !== "US"
+                  ? "— non-US ticker"
+                  : result?.sourceStatus?.sec ? "✅ Active" : "✗ failed",
               },
               {
                 name: "FRED",
