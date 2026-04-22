@@ -263,9 +263,11 @@ function DashboardPage() {
               },
               {
                 name: "SEC EDGAR",
-                desc: "Active: historical financials, filings",
+                desc: "Active: historical financials, filings (US only)",
                 ok: result?.sourceStatus?.sec,
-                badge: result?.sourceStatus?.sec ? "✅ Active" : "✗ failed",
+                badge: result && result.market !== "US"
+                  ? "— non-US ticker"
+                  : result?.sourceStatus?.sec ? "✅ Active" : "✗ failed",
               },
               {
                 name: "FRED",
@@ -355,14 +357,50 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
               {result.company.stateOfIncorporation && <span>· Inc. {result.company.stateOfIncorporation}</span>}
             </div>
 
-            <div className="flex items-baseline gap-3 mt-4">
-              <span className="text-4xl font-bold tabular-nums">{fmtPrice(result.price.current)}</span>
+            <div className="flex items-baseline gap-3 mt-4 flex-wrap">
+              <span className="text-4xl font-bold tabular-nums">{fmtPriceCcy(conv(result.price.current), ccySymbol)}</span>
               {result.price.changePct != null && (
                 <span className={`text-lg font-medium ${result.price.changePct >= 0 ? "text-success" : "text-danger"}`}>
                   {result.price.changePct >= 0 ? "▲" : "▼"} {fmtPctRaw(Math.abs(result.price.changePct))}
                 </span>
               )}
+              {result.market !== "US" && (
+                <span className="text-xs text-muted-foreground ml-2">
+                  {showCcy === localCcy
+                    ? `Local currency (${localCcy})`
+                    : `Converted from ${localCcy} @ ${result.fxRate?.toFixed(4) ?? "—"}`}
+                </span>
+              )}
             </div>
+
+            {/* Market flag + exchange name */}
+            <div className="mt-3 flex items-center gap-2 text-sm">
+              <span className="text-lg">{result.marketFlag}</span>
+              <span className="font-medium">{result.exchangeName}</span>
+              {result.benchmark && (
+                <span className="text-xs text-muted-foreground">· Benchmark: {result.benchmark.name}</span>
+              )}
+            </div>
+
+            {/* Liquidity warning for small EU markets */}
+            {result.liquidityWarning && (
+              <div className="mt-3 text-xs rounded-md border border-warning/40 bg-warning/10 text-warning px-3 py-2">
+                ⚠️ Low liquidity — avg daily volume ~{ccySymbol}
+                {(result.liquidityWarning.avgDailyValue / 1e6).toFixed(2)}M (below {ccySymbol}1M threshold).
+                Wider bid-ask spreads expected. Exercise caution with large positions.
+              </div>
+            )}
+
+            {/* EU regulatory filing freshness */}
+            {result.euFilingTimeliness && (
+              <div className={`mt-2 text-xs rounded-md border px-3 py-2 ${
+                result.euFilingTimeliness.status === "ok"
+                  ? "border-success/30 bg-success/10 text-success"
+                  : "border-danger/40 bg-danger/10 text-danger"
+              }`}>
+                {result.euFilingTimeliness.status === "ok" ? "✅" : "⚠️"} {result.euFilingTimeliness.detail}
+              </div>
+            )}
 
             {result.company.description && (
               <p className="text-sm text-muted-foreground mt-4 leading-relaxed line-clamp-3">
@@ -402,6 +440,7 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
         high52={result.price.high52}
         low52={result.price.low52}
         crossEvent={(result as any).crossEvent}
+        currencySymbol={CURRENCY_SYMBOL[localCcy]}
       />
 
       {/* Price Target & Fair Value */}
@@ -409,24 +448,35 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
         current={result.price.current}
         priceTarget={(result as any).priceTarget}
         fairValue={(result as any).fairValue}
+        currencySymbol={CURRENCY_SYMBOL[localCcy]}
       />
 
       {/* Section 1 — Fundamentals */}
       <section>
         <h2 className="text-xl font-bold mb-4">Section 1 · Fundamental Analysis</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {result.cards.map((c: any) => (
-            <div key={c.id} id={`card-${c.id}`} className="scroll-mt-24">
-              <FundamentalCard
-                title={c.title}
-                weight={c.weight}
-                score={c.score}
-                indicators={c.indicators}
-                source={c.source}
-                extras={c.extras}
-              />
-            </div>
-          ))}
+          {result.cards.map((c: any) => {
+            // For non-US markets, relabel "Beta (1y)" → "Beta vs {benchmark} (N/A)"
+            const indicators = c.indicators.map((ind: any) => {
+              if (ind.k === "Beta (1y)" && result.market !== "US") {
+                return { ...ind, k: `Beta vs ${result.benchmark.name}`, v: null };
+              }
+              return ind;
+            });
+            return (
+              <div key={c.id} id={`card-${c.id}`} className="scroll-mt-24">
+                <FundamentalCard
+                  title={c.title}
+                  weight={c.weight}
+                  score={c.score}
+                  indicators={indicators}
+                  source={c.source}
+                  extras={c.extras}
+                  currencySymbol={CURRENCY_SYMBOL[localCcy]}
+                />
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -461,6 +511,12 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
           vix={result.macro.vix}
           dxy={result.macro.dxy}
           sp500={result.macro.sp500}
+          policyRate={result.macro.policyRate}
+          policyRateLabel={result.macro.policyRateLabel}
+          tenYearLabel={result.macro.tenYearLabel}
+          eurUsd={result.macro.eurUsd}
+          gbpUsd={result.macro.gbpUsd}
+          region={localCcy === "EUR" ? "EUR" : localCcy === "GBP" ? "GBP" : "US"}
         />
       </section>
 
@@ -480,6 +536,8 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
           nextEPSEst={result.analyst.nextEPSEst}
           filings={result.filings}
           cik={result.company.cik || null}
+          currencySymbol={CURRENCY_SYMBOL[localCcy]}
+          filingsLabel={result.market === "US" ? "SEC Filings" : "Regulatory Filings"}
         />
         <div className="mt-5">
           <UpgradesPanel upgrades={result.analyst.upgrades || []} />
