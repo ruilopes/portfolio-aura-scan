@@ -19,6 +19,11 @@ import { fetchSECBundle, checkFilingTimeliness } from "./sources/sec.server";
 import { fetchFredBundle, FRED_SERIES } from "./sources/fred.server";
 import { sma, rsi, macdCalc, bollinger, histVolatility } from "./sources/technicals.server";
 import { pick, SourceLedger, setYahooDemoted, type Indicator } from "./sources/waterfall.server";
+import {
+  detectMarket, MARKET_CURRENCY, MARKET_BENCHMARK, MARKET_EXCHANGE_NAME,
+  MARKET_FLAG, MARKET_TENYEAR_LABEL, CURRENCY_POLICY_RATE_LABEL,
+  SECTOR_MEDIANS_EUROPE, polygonLocale,
+} from "@/lib/markets";
 
 // ────────────────────── small utility helpers ──────────────────────
 const score = (v: number | null, breaks: { lt: number; s: number }[]) => {
@@ -38,7 +43,7 @@ const sBand = (v: number | null, low: number, mid: number, high: number) => {
 export const analyzeStock = createServerFn({ method: "POST" })
   .inputValidator((d: { ticker: string; forceYahooRetry?: boolean }) => {
     const t = (d?.ticker || "").trim().toUpperCase();
-    if (!/^[A-Z.\-]{1,10}$/.test(t)) throw new Error("Invalid ticker");
+    if (!/^[A-Z0-9.\-]{1,12}$/.test(t)) throw new Error("Invalid ticker");
     return {
       ticker: t,
       forceYahooRetry: !!d?.forceYahooRetry,
@@ -48,6 +53,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const { ticker, forceYahooRetry } = data;
     const ledger = new SourceLedger();
 
+    // Detect market from ticker suffix (US tickers have no suffix).
+    const market = detectMarket(ticker);
+    const currency = MARKET_CURRENCY[market];
+    const benchmark = MARKET_BENCHMARK[market];
+    const exchangeName = MARKET_EXCHANGE_NAME[market];
+    const marketFlag = MARKET_FLAG[market];
+    const tenYearLabel = MARKET_TENYEAR_LABEL[market];
+    const policyRateLabel = CURRENCY_POLICY_RATE_LABEL[currency];
+    const isUS = market === "US";
+
     // If user clicked "Retry Yahoo", clear the rate-limit flag before fetching.
     if (forceYahooRetry) resetYahooRateLimit();
 
@@ -55,9 +70,10 @@ export const analyzeStock = createServerFn({ method: "POST" })
     const [yahooR, chartR, polyR, tgR, secR, fredR] = await Promise.allSettled([
       fetchYahooBundle(ticker),
       fetchYahooChart(ticker),
-      fetchPolygonBundle(ticker),
+      fetchPolygonBundle(ticker, { locale: polygonLocale(market) }),
       fetchTiingoBundle(ticker),
-      fetchSECBundle(ticker),
+      // SEC EDGAR only covers US-listed companies.
+      isUS ? fetchSECBundle(ticker) : Promise.resolve({ ok: false, cik: null, submissions: null, facts: null }),
       fetchFredBundle(),
     ]);
 
