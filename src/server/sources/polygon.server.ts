@@ -85,13 +85,17 @@ function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export async function fetchPolygonBundle(ticker: string): Promise<PolygonBundle> {
+export async function fetchPolygonBundle(
+  ticker: string,
+  opts: { locale?: "us" | "global" } = {},
+): Promise<PolygonBundle> {
   const apiKey = (process.env.POLYGON_API_KEY || "").trim();
   if (!apiKey) {
     return { ok: false, hasKey: false, rateLimited: false, unauthorized: false };
   }
 
   const t = encodeURIComponent(ticker);
+  const locale = opts.locale ?? "us";
   const today = new Date();
   const oneYearAgo = new Date(today);
   oneYearAgo.setFullYear(today.getFullYear() - 1);
@@ -103,7 +107,7 @@ export async function fetchPolygonBundle(ticker: string): Promise<PolygonBundle>
   // falls back to Tiingo/SEC.
   const calls = await Promise.allSettled([
     pgFetch(`/v3/reference/tickers/${t}`, apiKey), // 0 ticker
-    pgFetch(`/v2/snapshot/locale/us/markets/stocks/tickers/${t}`, apiKey), // 1 snapshot
+    pgFetch(`/v2/snapshot/locale/${locale}/markets/stocks/tickers/${t}`, apiKey), // 1 snapshot
     pgFetch(`/v2/aggs/ticker/${t}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=400`, apiKey), // 2 aggs
     pgFetch(`/v1/indicators/sma/${t}?timespan=day&window=50&series_type=close&limit=1`, apiKey), // 3 sma50
     pgFetch(`/v1/indicators/sma/${t}?timespan=day&window=200&series_type=close&limit=1`, apiKey), // 4 sma200
