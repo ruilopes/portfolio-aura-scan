@@ -20,6 +20,8 @@ import { AIRiskPanel } from "@/components/dashboard/AIRiskPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fmtPrice, fmtPctRaw, fmtDate } from "@/lib/format";
+import { fmtPriceCcy } from "@/lib/format";
+import { CURRENCY_SYMBOL, convertCurrency, SUPPORTED_SUFFIXES, type Currency } from "@/lib/markets";
 import { useSettings } from "@/lib/settings";
 import { cacheGet, cacheSet } from "@/lib/cache";
 
@@ -41,6 +43,7 @@ function DashboardPage() {
   const [ticker, setTicker] = useState("AAPL");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState<"local" | "USD">("local");
   const dashRef = useRef<HTMLDivElement>(null);
   const [settings] = useSettings();
 
@@ -160,13 +163,27 @@ function DashboardPage() {
               value={ticker}
               onChange={(e) => setTicker(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && onAnalyze()}
-              placeholder="Enter US ticker (e.g. AAPL, MSFT, TSLA)"
+              placeholder="Enter ticker (e.g. AAPL, EDP.LS, ASML.AS, SAP.DE, SHEL.L)"
               className="flex-1 text-lg font-semibold tracking-wider uppercase"
-              maxLength={10}
+              maxLength={12}
+              title={"Supported markets:\n" + SUPPORTED_SUFFIXES.map(s => `${s.flag}  ${s.suffix.padEnd(8)} ${s.exchange}`).join("\n")}
             />
             <Button onClick={onAnalyze} disabled={mutation.isPending} size="lg" className="font-semibold">
               {mutation.isPending ? "Analysing…" : "Analyse"}
             </Button>
+            {result && result.market !== "US" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDisplayCurrency(displayCurrency === "local" ? "USD" : "local")}
+                title="Toggle currency display"
+              >
+                {displayCurrency === "local" ? `Show in USD` : `Show in ${result.currency}`}
+              </Button>
+            )}
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-2">
+            🌍 Supports US + European markets · suffix examples: .LS Lisboa · .AS Amsterdam · .PA Paris · .DE Frankfurt · .L London · .MI Milan · .MC Madrid
           </div>
           {mutation.isError && (
             <p className="text-sm text-danger mt-3">
@@ -196,7 +213,7 @@ function DashboardPage() {
 
         <div ref={dashRef} className="space-y-8">
           {mutation.isPending && <LoadingSkeleton />}
-          {result && <DashboardContent result={result} onOpenSettings={() => setSettingsOpen(true)} />}
+          {result && <DashboardContent result={result} onOpenSettings={() => setSettingsOpen(true)} displayCurrency={displayCurrency} />}
           {!mutation.isPending && !result && (
             <div className="glass-card p-12 text-center">
               <div className="text-6xl mb-4">📊</div>
