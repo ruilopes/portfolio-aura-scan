@@ -1007,6 +1007,16 @@ export const analyzeStock = createServerFn({ method: "POST" })
 
     return {
       ticker, company,
+      market,
+      currency,
+      marketFlag,
+      exchangeName,
+      benchmark,
+      fxRates,
+      fxRate,
+      isUS,
+      liquidityWarning,
+      euFilingTimeliness,
       sources: ledger.toJSON(),
       sourceStatus: {
         yahoo: yahoo?.ok || false,
