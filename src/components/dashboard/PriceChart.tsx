@@ -3,7 +3,7 @@ import {
   ComposedChart, Line, Bar, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, CartesianGrid, Legend,
 } from "recharts";
-import { fmtPrice } from "@/lib/format";
+import { fmtPriceCcy } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 interface Point {
@@ -28,12 +28,14 @@ export function PriceChart({
   high52,
   low52,
   crossEvent,
+  currencySymbol = "$",
 }: {
   data: Point[];
   currentPrice: number | null;
   high52: number | null;
   low52: number | null;
   crossEvent?: { type: "golden" | "death"; daysAgo: number; date: string } | null;
+  currencySymbol?: string;
 }) {
   const [range, setRange] = useState<Range>("1Y");
 
@@ -148,7 +150,7 @@ export function PriceChart({
               domain={yDomain}
               tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
               width={55}
-              tickFormatter={(v) => `$${Number(v).toFixed(2)}`}
+              tickFormatter={(v) => `${currencySymbol}${Number(v).toFixed(2)}`}
             />
             <Tooltip
               contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12 }}
@@ -158,7 +160,7 @@ export function PriceChart({
                 const label = String(name ?? "");
                 if (v == null) return ["—", label];
                 if (label === "Volume") return [Number(v).toLocaleString(), label];
-                return [`$${Number(v).toFixed(2)}`, label];
+                return [`${currencySymbol}${Number(v).toFixed(2)}`, label];
               }}
             />
             {/* Bollinger Band — stacked: invisible base + translucent band */}
@@ -167,7 +169,7 @@ export function PriceChart({
             <Line yAxisId="price" type="monotone" dataKey="close" stroke="var(--color-primary)" strokeWidth={2} dot={false} name="Close" />
             <Line yAxisId="price" type="monotone" dataKey="sma50" stroke="var(--color-warning)" strokeWidth={1.5} dot={false} name="SMA 50" />
             <Line yAxisId="price" type="monotone" dataKey="sma200" stroke="var(--color-danger)" strokeWidth={1.5} dot={false} strokeDasharray="4 4" name="SMA 200" />
-            {low52 && <ReferenceLine yAxisId="price" y={low52} stroke="var(--color-danger)" strokeDasharray="2 4" label={{ value: `52w L ${fmtPrice(low52)}`, fill: "var(--color-danger)", fontSize: 10, position: "right" }} />}
+            {low52 && <ReferenceLine yAxisId="price" y={low52} stroke="var(--color-danger)" strokeDasharray="2 4" label={{ value: `52w L ${fmtPriceCcy(low52, currencySymbol)}`, fill: "var(--color-danger)", fontSize: 10, position: "right" }} />}
             {crossInWindow && (
               <ReferenceLine
                 yAxisId="price"
@@ -199,9 +201,9 @@ export function PriceChart({
       {pos52w != null && high52 != null && low52 != null && (
         <div className="space-y-1.5 pt-2 border-t border-border/50">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>52w Low <span className="text-foreground font-medium">{fmtPrice(low52)}</span></span>
+            <span>52w Low <span className="text-foreground font-medium">{fmtPriceCcy(low52, currencySymbol)}</span></span>
             <span>{pos52w.toFixed(0)}th percentile</span>
-            <span>52w High <span className="text-foreground font-medium">{fmtPrice(high52)}</span></span>
+            <span>52w High <span className="text-foreground font-medium">{fmtPriceCcy(high52, currencySymbol)}</span></span>
           </div>
           <div className="relative h-2 bg-muted/40 rounded-full overflow-hidden">
             <div
@@ -210,7 +212,7 @@ export function PriceChart({
             />
           </div>
           <div className="text-[11px] text-muted-foreground text-center">
-            now {fmtPrice(cp)}
+            now {fmtPriceCcy(cp, currencySymbol)}
           </div>
         </div>
       )}

@@ -10,6 +10,13 @@ interface Props {
   vix: number | null;
   dxy: number | null;
   sp500: number | null;
+  // Region-aware additions (optional for backward compat)
+  policyRate?: number | null;
+  policyRateLabel?: string;
+  tenYearLabel?: string;
+  eurUsd?: number | null;
+  gbpUsd?: number | null;
+  region?: "US" | "EUR" | "GBP";
 }
 
 const Item = ({ label, value, tone, hint }: { label: string; value: string; tone?: string; hint?: string }) => (
@@ -21,6 +28,10 @@ const Item = ({ label, value, tone, hint }: { label: string; value: string; tone
 
 export function MacroBar(p: Props) {
   const inverted = p.yieldCurve != null && p.yieldCurve < 0;
+  const region = p.region ?? "US";
+  const policyLabel = p.policyRateLabel ?? "Fed Funds";
+  const policyVal = p.policyRate ?? p.fedFunds;
+  const tenYLabel = p.tenYearLabel ?? "US 10Y";
   return (
     <div className="space-y-2 mt-4">
       {inverted && (
@@ -30,9 +41,9 @@ export function MacroBar(p: Props) {
       )}
       <div className="glass-card px-2 py-3 overflow-x-auto">
         <div className="flex items-center justify-around gap-1 min-w-max">
-          <Item label="Fed Funds" value={p.fedFunds != null ? `${p.fedFunds.toFixed(2)}%` : "—"} hint="FRED: FEDFUNDS" />
+          <Item label={policyLabel} value={policyVal != null ? `${policyVal.toFixed(2)}%` : "—"} hint="Local policy rate" />
           <span className="w-px h-8 bg-border" />
-          <Item label="US 10Y" value={p.treas10y != null ? `${p.treas10y.toFixed(2)}%` : "—"} hint="FRED: DGS10" />
+          <Item label={tenYLabel} value={p.treas10y != null ? `${p.treas10y.toFixed(2)}%` : "—"} hint="10Y benchmark yield (US Treasury proxy)" />
           <span className="w-px h-8 bg-border" />
           <Item label="US 2Y" value={p.treas2y != null ? `${p.treas2y.toFixed(2)}%` : "—"} hint="FRED: DGS2" />
           <span className="w-px h-8 bg-border" />
@@ -47,7 +58,13 @@ export function MacroBar(p: Props) {
           <span className="w-px h-8 bg-border" />
           <Item label="Unemp" value={p.unemployment != null ? `${p.unemployment.toFixed(1)}%` : "—"} hint="FRED: UNRATE" />
           <span className="w-px h-8 bg-border" />
-          <Item label="USD" value={fmtNum(p.dxy, 2)} hint="FRED: DTWEXBGS" />
+          {region === "EUR" && p.eurUsd != null ? (
+            <Item label="EUR/USD" value={p.eurUsd.toFixed(4)} hint="FRED: DEXUSEU" />
+          ) : region === "GBP" && p.gbpUsd != null ? (
+            <Item label="GBP/USD" value={p.gbpUsd.toFixed(4)} hint="FRED: DEXUSUK" />
+          ) : (
+            <Item label="USD" value={fmtNum(p.dxy, 2)} hint="FRED: DTWEXBGS" />
+          )}
           <span className="w-px h-8 bg-border" />
           <Item label="VIX" value={fmtNum(p.vix, 2)} tone={p.vix && p.vix > 20 ? "text-warning" : ""} hint="FRED: VIXCLS" />
           <span className="w-px h-8 bg-border" />
