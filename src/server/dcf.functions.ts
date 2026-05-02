@@ -283,14 +283,14 @@ export const computeDCF = createServerFn({ method: "POST" })
     const fred = fredR.status === "fulfilled" ? fredR.value : null;
 
     if (!poly?.ok || !poly?.financials?.length) {
-      return { error: "DCF requires Polygon historical financials, which are unavailable for this ticker." } as any;
+      throw new Error("DCF requires Polygon historical financials, which are unavailable for this ticker.");
     }
 
     const hist = extractHistoricals(poly.financials);
     const trends = computeTrends(hist);
     const ltm = hist[hist.length - 1];
     if (!ltm.revenue || ltm.revenue <= 0) {
-      return { error: "DCF requires positive LTM revenue." } as any;
+      throw new Error("DCF requires positive LTM revenue.");
     }
 
     const companyName: string = poly.ticker?.name || ticker;
@@ -311,7 +311,7 @@ export const computeDCF = createServerFn({ method: "POST" })
       (tgLastClose && tgLastClose > 0 ? tgLastClose : null) ??
       null;
     if (!currentPrice || currentPrice <= 0) {
-      return { error: "Current price unavailable from Polygon snapshot or Tiingo EOD." } as any;
+      throw new Error("Current price unavailable from Polygon snapshot or Tiingo EOD.");
     }
     let dilutedShares: number = (
       poly.ticker?.weighted_shares_outstanding ||
@@ -323,7 +323,7 @@ export const computeDCF = createServerFn({ method: "POST" })
       proxies.push("Diluted shares estimated from Market Cap / Price");
     }
     if (!dilutedShares) {
-      return { error: "Diluted shares outstanding unavailable." } as any;
+      throw new Error("Diluted shares outstanding unavailable.");
     }
     const marketCap = currentPrice * dilutedShares;
 
