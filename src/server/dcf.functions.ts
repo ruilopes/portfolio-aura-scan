@@ -306,10 +306,11 @@ export const computeDCF = createServerFn({ method: "POST" })
     if (!currentPrice || currentPrice <= 0) {
       throw new Error("Current price unavailable.");
     }
-    let dilutedShares: number | null =
+    let dilutedShares: number = (
       poly.ticker?.weighted_shares_outstanding ||
       poly.ticker?.share_class_shares_outstanding ||
-      null;
+      0
+    ) as number;
     if (!dilutedShares && poly.ticker?.market_cap) {
       dilutedShares = poly.ticker.market_cap / currentPrice;
       proxies.push("Diluted shares estimated from Market Cap / Price");
@@ -369,10 +370,12 @@ export const computeDCF = createServerFn({ method: "POST" })
     const wacc = wEquity * costOfEquity + wDebt * afterTaxCostOfDebt;
 
     const histCAGR3 = cagr(hist[0].revenue, hist[3].revenue, 3) ?? 0.05;
-    let analystGrowth =
-      (tgOverview(tg, "revenueGrowth") as number | null) ??
-      (tgDaily(tg, "revenueGrowth") as number | null);
-    if (analystGrowth == null || !isFinite(analystGrowth)) {
+    const tgRevG1 = tgOverview(tg, "revenueGrowth");
+    const tgRevG2 = tgDaily(tg, "revenueGrowth");
+    let analystGrowth: number | null =
+      (typeof tgRevG1 === "number" && isFinite(tgRevG1)) ? tgRevG1 :
+      (typeof tgRevG2 === "number" && isFinite(tgRevG2)) ? tgRevG2 : null;
+    if (analystGrowth == null) {
       analystGrowth = histCAGR3;
       proxies.push("Analyst forward growth unavailable — using 3y historical CAGR");
     }
@@ -483,7 +486,7 @@ export const computeDCF = createServerFn({ method: "POST" })
       { label: "WACC", value: `${(wacc * 100).toFixed(2)}%`, source: "Computed", editable: false, key: null },
       { label: "Tax Rate", value: `${(taxRate * 100).toFixed(1)}%`, source: ebitLatest > 0 && niLatest > 0 ? "Effective rate (EBIT vs NI)" : "21% statutory", editable: false, key: null },
       { label: "Terminal Growth Rate", value: `${(terminalGrowth * 100).toFixed(2)}%`, source: "Hardcoded (long-run nominal GDP)", editable: true, key: "terminalGrowthRate" },
-      { label: "Exit Multiple (EV/EBITDA)", value: `${exitMultiple.toFixed(1)}x`, source: sector ? `Sector median: ${sector}` : "Default", editable: true, key: "exitMultiple" },
+      { label: "Exit Multiple (EV/EBITDA)", value: `${(exitMultiple as number).toFixed(1)}x`, source: sector ? `Sector median: ${sector}` : "Default", editable: true, key: "exitMultiple" },
       { label: "CapEx as % of Revenue", value: `${(capexPctRevenue * 100).toFixed(2)}%`, source: "LTM", editable: true, key: "capexPctRevenue" },
       { label: "D&A as % of Revenue", value: `${(daPctRevenue * 100).toFixed(2)}%`, source: "LTM", editable: false, key: null },
       { label: "Working Capital Change %", value: `${(wcChangePctRevenue * 100).toFixed(2)}%`, source: "Industry proxy", editable: false, key: null },
