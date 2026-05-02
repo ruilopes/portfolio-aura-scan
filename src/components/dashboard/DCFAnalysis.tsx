@@ -33,10 +33,18 @@ export function DCFAnalysis({ ticker }: Props) {
     mutationFn: async (o: DCFOverrides) => {
       return await computeDCF({ data: { ticker, overrides: o } });
     },
+    // Consume the rejection so the dev runtime-error overlay does not flag
+    // expected DCF failures (e.g. Polygon snapshot empty, no historicals).
+    onError: (err) => {
+      console.warn("[DCF] compute failed:", (err as Error)?.message);
+    },
   });
   const memoMut = useMutation({
     mutationFn: async (dcf: DCFResult) => {
       return await dcfMemo({ data: { dcf } });
+    },
+    onError: (err) => {
+      console.warn("[DCF memo] failed:", (err as Error)?.message);
     },
   });
 

@@ -311,7 +311,7 @@ export const computeDCF = createServerFn({ method: "POST" })
       (tgLastClose && tgLastClose > 0 ? tgLastClose : null) ??
       null;
     if (!currentPrice || currentPrice <= 0) {
-      throw new Error("Current price unavailable.");
+      throw new Error("Current price unavailable from Polygon snapshot or Tiingo EOD.");
     }
     let dilutedShares: number = (
       poly.ticker?.weighted_shares_outstanding ||
