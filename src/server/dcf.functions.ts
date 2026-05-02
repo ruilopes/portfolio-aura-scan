@@ -297,11 +297,18 @@ export const computeDCF = createServerFn({ method: "POST" })
     const sector: string | null = poly.ticker?.sic_description || null;
     const fye: string | null = poly.financials?.[0]?.fiscal_year || poly.financials?.[0]?.end_date || null;
 
+    const polyDayClose = poly.snapshot?.day?.c;
+    const polyPrevDayClose = poly.snapshot?.prevDay?.c;
+    const polyMinClose = poly.snapshot?.min?.c;
+    const tgLastClose = tg?.eod?.length ? tg.eod[tg.eod.length - 1]?.close : null;
     const currentPrice =
-      poly.snapshot?.day?.c ??
-      poly.snapshot?.lastTrade?.p ??
-      poly.trades?.price ??
-      poly.aggs?.[poly.aggs.length - 1]?.close ??
+      (polyDayClose && polyDayClose > 0 ? polyDayClose : null) ??
+      (poly.snapshot?.lastTrade?.p && poly.snapshot.lastTrade.p > 0 ? poly.snapshot.lastTrade.p : null) ??
+      (polyMinClose && polyMinClose > 0 ? polyMinClose : null) ??
+      (polyPrevDayClose && polyPrevDayClose > 0 ? polyPrevDayClose : null) ??
+      (poly.trades?.price && poly.trades.price > 0 ? poly.trades.price : null) ??
+      (poly.aggs?.length ? poly.aggs[poly.aggs.length - 1]?.close : null) ??
+      (tgLastClose && tgLastClose > 0 ? tgLastClose : null) ??
       null;
     if (!currentPrice || currentPrice <= 0) {
       throw new Error("Current price unavailable.");
