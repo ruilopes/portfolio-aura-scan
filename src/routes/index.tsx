@@ -524,9 +524,6 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
       {/* Section 2B — AI risk intelligence */}
       <AIRiskPanel ticker={result.ticker} payload={aiPayload} onOpenSettings={onOpenSettings} />
 
-      {/* Section 5 — DCF Valuation Analysis */}
-      <DCFAnalysis ticker={result.ticker} />
-
       {/* Section 3 — Analyst intelligence */}
       <section>
         <h2 className="text-xl font-bold mb-4">Section 3 · Analyst Intelligence</h2>
@@ -559,7 +556,9 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
         />
       </section>
 
-    
+      {/* Section 5 — DCF Valuation Analysis */}
+      <DCFAnalysis ticker={result.ticker} />
+
     </>
   );
 }
