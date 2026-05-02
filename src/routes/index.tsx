@@ -13,6 +13,7 @@ import { AnalystIntelligence } from "@/components/dashboard/AnalystIntelligence"
 import { LoadingSkeleton } from "@/components/dashboard/LoadingSkeleton";
 import { SettingsModal } from "@/components/dashboard/SettingsModal";
 import { PriceTargetFairValue } from "@/components/dashboard/PriceTargetFairValue";
+import { DCFAnalysis } from "@/components/dashboard/DCFAnalysis";
 
 import { OwnershipPanel } from "@/components/dashboard/OwnershipPanel";
 import { UpgradesPanel } from "@/components/dashboard/UpgradesPanel";
@@ -522,6 +523,9 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
 
       {/* Section 2B — AI risk intelligence */}
       <AIRiskPanel ticker={result.ticker} payload={aiPayload} onOpenSettings={onOpenSettings} />
+
+      {/* Section 5 — DCF Valuation Analysis */}
+      <DCFAnalysis ticker={result.ticker} />
 
       {/* Section 3 — Analyst intelligence */}
       <section>
