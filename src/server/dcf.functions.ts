@@ -386,7 +386,7 @@ export const computeDCF = createServerFn({ method: "POST" })
       Industrials: 0.05, Energy: 0.03, Materials: 0.04, "Basic Materials": 0.04,
       Utilities: 0.03, "Real Estate": 0.04, "Communication Services": 0.06,
     };
-    const sectorGrowth = (sector && sectorGrowthMap[sector]) ?? 0.05;
+    const sectorGrowth: number = (sector ? sectorGrowthMap[sector] : undefined) ?? 0.05;
     const baseGrowthY1 = histCAGR3 * 0.4 + analystGrowth * 0.4 + sectorGrowth * 0.2;
 
     const ebitdaMarginLTM = ltm.ebitdaMargin ?? 0.15;
@@ -407,7 +407,7 @@ export const computeDCF = createServerFn({ method: "POST" })
             Industrials: 11, Energy: 7, Materials: 8, "Basic Materials": 8,
             Utilities: 11, "Real Estate": 18, "Communication Services": 13 } as Record<string, number>
         : SECTOR_MEDIANS_EUROPE;
-      return (sector && sectorMedians[sector]) ?? 12;
+      return (sector ? sectorMedians[sector] : undefined) ?? 12;
     })();
     const exitMultiple = overrides.exitMultiple ?? exitMultipleDefault;
     const capexPctRevenue = overrides.capexPctRevenue ?? capexPctRevenueLTM;
