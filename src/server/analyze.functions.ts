@@ -1005,6 +1005,111 @@ export const analyzeStock = createServerFn({ method: "POST" })
       })),
     ].slice(0, 12);
 
+    // ────────────── Revenue + P&L history (last 3 fiscal years + last 2 Q) ──────────────
+    type PnlYear = {
+      fiscalYear: number | null;
+      periodEnd: string | null;
+      revenue: number | null;
+      grossProfit: number | null;
+      operatingIncome: number | null;
+      netIncome: number | null;
+      epsDiluted: number | null;
+    };
+    const polyAnnualResults: any[] = Array.isArray(poly?.financials) ? poly!.financials : [];
+    const polyQuarterly: any[] = Array.isArray(poly?.financialsQuarterly) ? poly!.financialsQuarterly : [];
+
+    const pnlFromPolygon = (r: any): PnlYear | null => {
+      if (!r) return null;
+      const inc = r?.financials?.income_statement;
+      if (!inc) return null;
+      return {
+        fiscalYear: r.fiscal_year != null ? Number(r.fiscal_year) : null,
+        periodEnd: r.end_date || null,
+        revenue: polyFinValue(inc, "revenues"),
+        grossProfit: polyFinValue(inc, "gross_profit"),
+        operatingIncome: polyFinValue(inc, "operating_income"),
+        netIncome: polyFinValue(inc, "net_income_loss"),
+        epsDiluted:
+          polyFinValue(inc, "diluted_earnings_per_share") ??
+          polyFinValue(inc, "basic_earnings_per_share"),
+      };
+    };
+
+    // Tiingo fallback extractor
+    const tgIncRow = (stmt: any, code: string): number | null => {
+      const arr = stmt?.statementData?.incomeStatement;
+      if (!Array.isArray(arr)) return null;
+      const row = arr.find((r: any) => r?.dataCode === code);
+      const v = row?.value;
+      const n = v == null ? null : Number(v);
+      return n != null && isFinite(n) ? n : null;
+    };
+    const tgAnnual: any[] = (tg?.statements || []).filter(
+      (s: any) => (s?.quarter ?? s?.fiscalQuarter) === 0 || s?.year != null,
+    );
+    const pnlFromTiingo = (s: any): PnlYear | null => {
+      if (!s) return null;
+      return {
+        fiscalYear: s.year != null ? Number(s.year) : null,
+        periodEnd: s.date || null,
+        revenue: tgIncRow(s, "revenue"),
+        grossProfit: tgIncRow(s, "grossProfit"),
+        operatingIncome: tgIncRow(s, "operatingIncome"),
+        netIncome: tgIncRow(s, "netIncomeCommonStock") ?? tgIncRow(s, "netIncome"),
+        epsDiluted: tgIncRow(s, "epsDil") ?? tgIncRow(s, "eps"),
+      };
+    };
+
+    let pnlYears: PnlYear[] = polyAnnualResults
+      .slice(0, 3)
+      .map(pnlFromPolygon)
+      .filter((y): y is PnlYear => !!y && y.revenue != null);
+    let pnlSource: "Polygon" | "Tiingo" | "SEC EDGAR" = "Polygon";
+    if (pnlYears.length < 2 && tgAnnual.length) {
+      const fromTg = tgAnnual.slice(0, 3).map(pnlFromTiingo).filter((y): y is PnlYear => !!y && y.revenue != null);
+      if (fromTg.length > pnlYears.length) {
+        pnlYears = fromTg;
+        pnlSource = "Tiingo";
+      }
+    }
+    if (pnlYears.length < 2 && sec?.facts) {
+      // SEC fallback (US tickers): build from revenueHistory + simple latest aggregates.
+      const rh = (sec.facts as any).revenueHistory as { fy: number; val: number }[] | undefined;
+      if (Array.isArray(rh) && rh.length) {
+        pnlYears = rh.slice(0, 3).map((r, i) => ({
+          fiscalYear: r.fy,
+          periodEnd: null,
+          revenue: r.val,
+          grossProfit: i === 0 ? (sec.facts as any).grossProfit ?? null : null,
+          operatingIncome: i === 0 ? (sec.facts as any).operatingIncome ?? null : null,
+          netIncome: i === 0 ? (sec.facts as any).netIncome ?? null : null,
+          epsDiluted: i === 0 ? (sec.facts as any).eps ?? null : null,
+        }));
+        pnlSource = "SEC EDGAR";
+      }
+    }
+
+    // Quarterly revenue (last 2) for QoQ
+    const polyQ: PnlYear[] = polyQuarterly
+      .slice(0, 2)
+      .map(pnlFromPolygon)
+      .filter((y): y is PnlYear => !!y && y.revenue != null);
+
+    const pctChange = (a: number | null, b: number | null): number | null => {
+      if (a == null || b == null || !isFinite(a) || !isFinite(b) || b === 0) return null;
+      return (a - b) / Math.abs(b);
+    };
+    const fy0 = pnlYears[0], fy1 = pnlYears[1], fy2 = pnlYears[2];
+    const pnlHistory = {
+      source: pnlSource,
+      years: pnlYears,
+      quarters: polyQ,
+      growth2Y: fy0 && fy2 ? pctChange(fy0.revenue, fy2.revenue) : null,
+      growthYoY: fy0 && fy1 ? pctChange(fy0.revenue, fy1.revenue) : null,
+      growthQoQ: polyQ.length >= 2 ? pctChange(polyQ[0].revenue, polyQ[1].revenue) : null,
+      netIncomeYoY: fy0 && fy1 ? pctChange(fy0.netIncome, fy1.netIncome) : null,
+    };
+
     return {
       ticker, company,
       market,
@@ -1118,6 +1223,7 @@ export const analyzeStock = createServerFn({ method: "POST" })
         average: avgFairValue,
         averageVsCurrent: avgFairValueVsCurrent,
       },
+      pnlHistory,
     };
   });
 
