@@ -17,6 +17,7 @@ import { PriceTargetFairValue } from "@/components/dashboard/PriceTargetFairValu
 import { OwnershipPanel } from "@/components/dashboard/OwnershipPanel";
 import { UpgradesPanel } from "@/components/dashboard/UpgradesPanel";
 import { AIRiskPanel } from "@/components/dashboard/AIRiskPanel";
+import { RevenueCard, PnLCard } from "@/components/dashboard/RevenuePnLCards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fmtPrice, fmtPctRaw, fmtDate } from "@/lib/format";
@@ -477,6 +478,16 @@ function DashboardContent({ result, onOpenSettings, displayCurrency }: { result:
               </div>
             );
           })}
+          {(result as any).pnlHistory && (
+            <>
+              <div id="card-revenue" className="scroll-mt-24">
+                <RevenueCard history={(result as any).pnlHistory} currencySymbol={CURRENCY_SYMBOL[localCcy]} />
+              </div>
+              <div id="card-pnl" className="scroll-mt-24">
+                <PnLCard history={(result as any).pnlHistory} currencySymbol={CURRENCY_SYMBOL[localCcy]} />
+              </div>
+            </>
+          )}
         </div>
       </section>
 
