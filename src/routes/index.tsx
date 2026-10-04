@@ -42,7 +42,7 @@ function DashboardPage() {
   const [title, setTitle] = useState("Stock Analysis Dashboard");
   const [editingTitle, setEditingTitle] = useState(false);
   const [ticker, setTicker] = useState("AAPL");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState<"local" | "USD">("local");
   const dashRef = useRef<HTMLDivElement>(null);
