@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { generateAIRisk, type AIRiskResult } from "@/server/ai-risk.functions";
+import { generateAIRisk, type AIRiskResult } from "@/lib/api/ai-risk.functions";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";

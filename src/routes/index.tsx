@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { analyzeStock, type AnalysisResult } from "@/server/analyze.functions";
+import { analyzeStock, type AnalysisResult } from "@/lib/api/analyze.functions";
 import { ScoreBreakdown } from "@/components/dashboard/ScoreBreakdown";
 import { SourceBadge } from "@/components/dashboard/SourceBadge";
 import { FundamentalCard } from "@/components/dashboard/FundamentalCard";
