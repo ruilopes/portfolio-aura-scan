@@ -102,8 +102,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
               <Button
                 size="sm"
                 variant="outline"
-                disabled={changing === false && hasSavedKey}
-                disabled={!anthropicDraft.trim() || !changing && hasSavedKey || testing}
+                disabled={!anthropicDraft.trim() || testing}
                 onClick={async () => {
                   setTesting(true);
                   try {
