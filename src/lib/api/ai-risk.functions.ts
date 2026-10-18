@@ -90,6 +90,11 @@ Identify the top 5 specific risks. Each description must be 2 sentences.`;
       if (r.status === 401) throw new Error("Invalid Anthropic API key.");
       if (r.status === 429) throw new Error("Anthropic rate limit reached. Try again in a minute.");
       if (r.status === 529) throw new Error("Anthropic service overloaded. Try again shortly.");
+      if (/credit balance is too low/i.test(errText)) {
+        throw new Error(
+          "Your Anthropic account is out of credits. Top up at console.anthropic.com (Plans & Billing) or use a different key in Settings.",
+        );
+      }
       throw new Error(`Anthropic API error (${r.status}): ${errText.slice(0, 200)}`);
     }
 
