@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -12,17 +12,43 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
   const [settings, update] = useSettings();
   const [anthropicDraft, setAnthropicDraft] = useState("");
   const [reveal, setReveal] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [changing, setChanging] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<"valid" | "invalid" | "unreachable" | "no_credits" | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const hasSavedKey = !!settings.anthropicKey.trim();
+  const draftChanged = anthropicDraft.trim() !== settings.anthropicKey.trim();
 
   useEffect(() => {
     if (open) {
       setAnthropicDraft(settings.anthropicKey);
       setReveal(false);
+      setChanging(false);
       setTestStatus(null);
     }
   }, [open, settings.anthropicKey]);
+
+  const startChange = () => {
+    setAnthropicDraft("");
+    setChanging(true);
+    setTestStatus(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const cancelChange = () => {
+    setAnthropicDraft(settings.anthropicKey);
+    setChanging(false);
+    setReveal(false);
+    setTestStatus(null);
+  };
+
+  const saveKey = () => {
+    update({ anthropicKey: anthropicDraft.trim() });
+    setChanging(false);
+    setReveal(false);
+    setTestStatus(null);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
