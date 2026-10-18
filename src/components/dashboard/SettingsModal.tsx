@@ -4,15 +4,24 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useSettings } from "@/lib/settings";
+import { useSettings, maskKey, clearAnthropicKey } from "@/lib/settings";
 import { cacheClearAll } from "@/lib/cache";
+import { testAnthropicKey } from "@/lib/api/ai-risk.functions";
 
 export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [settings, update] = useSettings();
   const [anthropicDraft, setAnthropicDraft] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<"valid" | "invalid" | "unreachable" | null>(null);
 
   useEffect(() => {
-    if (open) setAnthropicDraft(settings.anthropicKey);
+    if (open) {
+      setAnthropicDraft(settings.anthropicKey);
+      setReveal(false);
+      setTestStatus(null);
+    }
   }, [open, settings.anthropicKey]);
 
   return (
@@ -25,16 +34,75 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
 
         <div className="space-y-4 mt-2">
           <div className="space-y-1.5">
-            <Label className="text-sm">Anthropic API Key (AI risk panel)</Label>
-            <Input
-              type="password"
-              value={anthropicDraft}
-              onChange={(e) => setAnthropicDraft(e.target.value)}
-              placeholder="sk-ant-…"
-              className="font-mono text-xs"
-            />
+            <Label className="text-sm font-semibold">API Keys</Label>
+            <Label className="text-sm block pt-1">Anthropic API Key</Label>
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1">
+                <Input
+                  type="text"
+                  value={editing || reveal ? anthropicDraft : maskKey(anthropicDraft)}
+                  onFocus={() => setEditing(true)}
+                  onBlur={() => setEditing(false)}
+                  onChange={(e) => {
+                    setAnthropicDraft(e.target.value);
+                    setTestStatus(null);
+                  }}
+                  placeholder="sk-ant-…"
+                  className="font-mono text-xs pr-9"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  onClick={() => setReveal((r) => !r)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-sm opacity-70 hover:opacity-100"
+                  aria-label={reveal ? "Hide key" : "Show key"}
+                >
+                  👁
+                </button>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!anthropicDraft.trim() || testing}
+                onClick={async () => {
+                  setTesting(true);
+                  try {
+                    const r = await testAnthropicKey({ data: { apiKey: anthropicDraft.trim() } });
+                    setTestStatus(r.status);
+                  } catch {
+                    setTestStatus("unreachable");
+                  } finally {
+                    setTesting(false);
+                  }
+                }}
+              >
+                {testing ? "…" : "Test"}
+              </Button>
+              {anthropicDraft && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    clearAnthropicKey();
+                    setAnthropicDraft("");
+                    setTestStatus(null);
+                    update({ anthropicKey: "" });
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            {testStatus === "valid" && <p className="text-xs text-success">✅ Key valid — Claude is ready</p>}
+            {testStatus === "invalid" && <p className="text-xs text-danger">❌ Invalid key — check and try again</p>}
+            {testStatus === "unreachable" && (
+              <p className="text-xs text-warning">⚠️ Could not reach Anthropic — check your connection</p>
+            )}
             <p className="text-[11px] text-muted-foreground">
-              Powers the Claude risk analysis panel. Stored locally —{" "}
+              Used for: AI Risk Analysis · Investment Memo
+              <br />
+              Get your key at{" "}
               <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="text-primary underline">
                 console.anthropic.com
               </a>
