@@ -8,10 +8,33 @@ export interface AppSettings {
 }
 
 const KEY = "stockdash:settings";
-// Persistent settings exclude sensitive credentials. The Anthropic API key
-// is held in sessionStorage (cleared when the tab closes) to reduce the
-// blast radius of any XSS — it cannot be exfiltrated from a stale tab/device.
-const SECRET_KEY = "stockdash:anthropic-key";
+const ANTHROPIC_KEY = "anthropic_api_key";
+
+export const saveAnthropicKey = (key: string) => {
+  if (typeof window === "undefined") return;
+  if (key) localStorage.setItem(ANTHROPIC_KEY, key);
+  else localStorage.removeItem(ANTHROPIC_KEY);
+};
+
+export const getAnthropicKey = (): string => {
+  if (typeof window === "undefined") return "";
+  try {
+    return localStorage.getItem(ANTHROPIC_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+
+export const clearAnthropicKey = () => {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(ANTHROPIC_KEY);
+};
+
+export const maskKey = (k: string) => {
+  if (!k) return "";
+  const prefix = k.startsWith("sk-ant-") ? "sk-ant-" : "";
+  return `${prefix}${"•".repeat(8)}${k.slice(-4)}`;
+};
 
 const DEFAULTS: AppSettings = {
   anthropicKey: "",
@@ -25,10 +48,8 @@ function read(): AppSettings {
   try {
     const raw = window.localStorage.getItem(KEY);
     const persisted = raw ? JSON.parse(raw) : {};
-    // Strip any legacy persisted key — never read secrets from localStorage.
     delete persisted.anthropicKey;
-    const anthropicKey = window.sessionStorage.getItem(SECRET_KEY) ?? "";
-    return { ...DEFAULTS, ...persisted, anthropicKey };
+    return { ...DEFAULTS, ...persisted, anthropicKey: getAnthropicKey() };
   } catch {
     return DEFAULTS;
   }
@@ -39,20 +60,7 @@ function write(s: AppSettings) {
   try {
     const { anthropicKey, ...rest } = s;
     window.localStorage.setItem(KEY, JSON.stringify(rest));
-    if (anthropicKey) {
-      window.sessionStorage.setItem(SECRET_KEY, anthropicKey);
-    } else {
-      window.sessionStorage.removeItem(SECRET_KEY);
-    }
-    // Best-effort cleanup of any legacy localStorage entry that contained the key.
-    try {
-      const legacy = window.localStorage.getItem(KEY);
-      if (legacy && legacy.includes("anthropicKey")) {
-        window.localStorage.setItem(KEY, JSON.stringify(rest));
-      }
-    } catch {
-      /* ignore */
-    }
+    saveAnthropicKey(anthropicKey);
   } catch {
     /* ignore */
   }

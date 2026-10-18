@@ -1,7 +1,11 @@
-import { useMutation } from "@tanstack/react-query";
-import { generateAIRisk, type AIRiskResult } from "@/lib/api/ai-risk.functions";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  generateAIRisk,
+  anthropicServerKeyAvailable,
+  type AIRiskResult,
+} from "@/lib/api/ai-risk.functions";
 import { Button } from "@/components/ui/button";
-import { useSettings } from "@/lib/settings";
+import { useSettings, getAnthropicKey } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 const SEV: Record<string, string> = {
@@ -27,9 +31,15 @@ export function AIRiskPanel({
   onOpenSettings: () => void;
 }) {
   const [settings] = useSettings();
+  const serverKey = useQuery({
+    queryKey: ["anthropic-server-key"],
+    queryFn: () => anthropicServerKeyAvailable(),
+    staleTime: Infinity,
+  });
+  const hasKey = !!settings.anthropicKey || !!serverKey.data?.available;
   const mutation = useMutation({
     mutationFn: () =>
-      generateAIRisk({ data: { apiKey: settings.anthropicKey, ticker, payload } }),
+      generateAIRisk({ data: { apiKey: getAnthropicKey(), ticker, payload } }),
   });
   const data = mutation.data as AIRiskResult | undefined;
 

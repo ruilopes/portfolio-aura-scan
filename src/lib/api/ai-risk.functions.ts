@@ -8,26 +8,55 @@ export interface AIRiskResult {
   suggested_action: "Buy" | "Hold" | "Watch" | "Avoid";
 }
 
-/**
- * Calls Anthropic Claude with a user-provided API key.
- * The key is sent from the browser (localStorage) to this server function,
- * which then proxies the call to Anthropic. The key never reaches the browser
- * → Anthropic boundary directly (which would be blocked by CORS anyway).
- *
- * SECURITY NOTE: A user's key is in their localStorage. Anyone with access
- * to their browser can read it. Acceptable for personal/internal use only.
- */
-export const generateAIRisk = createServerFn({ method: "POST" })
-  .inputValidator((d: { apiKey: string; ticker: string; payload: any }) => {
-    if (!d?.apiKey || typeof d.apiKey !== "string" || d.apiKey.length < 20) {
-      throw new Error("Anthropic API key is required (set it in Settings).");
+function resolveKey(k?: string) {
+  return (k && k.trim()) || process.env.ANTHROPIC_API_KEY || "";
+}
+
+/** Whether a fallback Anthropic key is configured on the server. */
+export const anthropicServerKeyAvailable = createServerFn({ method: "GET" }).handler(
+  async () => ({ available: !!process.env.ANTHROPIC_API_KEY }),
+);
+
+/** Minimal ping to verify a key. Runs server-side (Anthropic blocks browser CORS). */
+export const testAnthropicKey = createServerFn({ method: "POST" })
+  .inputValidator((d: { apiKey: string }) => {
+    if (!d?.apiKey || typeof d.apiKey !== "string") throw new Error("Missing key.");
+    return d;
+  })
+  .handler(async ({ data }): Promise<{ status: "valid" | "invalid" | "unreachable" }> => {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": data.apiKey.trim(),
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 10,
+          messages: [{ role: "user", content: "ping" }],
+        }),
+      });
+      if (r.status === 200 || r.status === 529) return { status: "valid" };
+      if (r.status === 401 || r.status === 403) return { status: "invalid" };
+      return { status: "unreachable" };
+    } catch {
+      return { status: "unreachable" };
     }
+  });
+
+/** Calls Claude using the user's key (from Settings) or the server fallback key. */
+export const generateAIRisk = createServerFn({ method: "POST" })
+  .inputValidator((d: { apiKey?: string; ticker: string; payload: any }) => {
     if (!d?.ticker || typeof d.ticker !== "string") throw new Error("Missing ticker.");
     if (!d?.payload || typeof d.payload !== "object") throw new Error("Missing payload.");
     return d;
   })
   .handler(async ({ data }) => {
-    const { apiKey, ticker, payload } = data;
+    const { ticker, payload } = data;
+    const apiKey = resolveKey(data.apiKey);
+    if (!apiKey) throw new Error("Anthropic API key required — add it in Settings.");
     const company = payload.company || {};
     const macro = payload.macro || {};
 
