@@ -58,11 +58,7 @@ export function AIRiskPanel({
           </p>
         </div>
         <div className="flex gap-2">
-          {!settings.anthropicKey ? (
-            <Button onClick={onOpenSettings} size="sm" variant="outline">
-              ⚙️ Add Anthropic API key
-            </Button>
-          ) : (
+          {hasKey && (
             <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} size="sm">
               {mutation.isPending ? "Analysing…" : data ? "Re-analyse" : "Run AI analysis"}
             </Button>
@@ -70,10 +66,15 @@ export function AIRiskPanel({
         </div>
       </div>
 
-      {!settings.anthropicKey && (
-        <div className="text-sm text-muted-foreground italic p-6 text-center border border-dashed border-border rounded-lg">
-          Add your Anthropic API key in Settings to enable Claude-powered risk analysis,
-          bull/bear thesis generation and a suggested action.
+      {!hasKey && !serverKey.isLoading && (
+        <div className="p-6 text-center border border-dashed border-border rounded-lg space-y-2">
+          <div className="font-semibold">🔑 Anthropic API key required for AI analysis</div>
+          <p className="text-sm text-muted-foreground">
+            Add your key in ⚙️ Settings to enable this section.
+          </p>
+          <Button onClick={onOpenSettings} size="sm" variant="outline">
+            Open Settings
+          </Button>
         </div>
       )}
 

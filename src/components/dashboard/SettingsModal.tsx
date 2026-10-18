@@ -4,15 +4,24 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useSettings } from "@/lib/settings";
+import { useSettings, maskKey, clearAnthropicKey } from "@/lib/settings";
 import { cacheClearAll } from "@/lib/cache";
+import { testAnthropicKey } from "@/lib/api/ai-risk.functions";
 
 export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [settings, update] = useSettings();
   const [anthropicDraft, setAnthropicDraft] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<"valid" | "invalid" | "unreachable" | null>(null);
 
   useEffect(() => {
-    if (open) setAnthropicDraft(settings.anthropicKey);
+    if (open) {
+      setAnthropicDraft(settings.anthropicKey);
+      setReveal(false);
+      setTestStatus(null);
+    }
   }, [open, settings.anthropicKey]);
 
   return (
