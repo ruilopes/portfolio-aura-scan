@@ -23,7 +23,7 @@ export const testAnthropicKey = createServerFn({ method: "POST" })
     if (!d?.apiKey || typeof d.apiKey !== "string") throw new Error("Missing key.");
     return d;
   })
-  .handler(async ({ data }): Promise<{ status: "valid" | "invalid" | "unreachable" }> => {
+  .handler(async ({ data }): Promise<{ status: "valid" | "invalid" | "unreachable" | "no_credits" }> => {
     try {
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -40,6 +40,7 @@ export const testAnthropicKey = createServerFn({ method: "POST" })
       });
       if (r.status === 200 || r.status === 529) return { status: "valid" };
       if (r.status === 401 || r.status === 403) return { status: "invalid" };
+      if (r.status === 400 && /credit balance/i.test(await r.text().catch(() => ""))) return { status: "no_credits" };
       return { status: "unreachable" };
     } catch {
       return { status: "unreachable" };
