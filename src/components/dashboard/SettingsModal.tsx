@@ -14,7 +14,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
   const [reveal, setReveal] = useState(false);
   const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<"valid" | "invalid" | "unreachable" | null>(null);
+  const [testStatus, setTestStatus] = useState<"valid" | "invalid" | "unreachable" | "no_credits" | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -96,6 +96,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
             </div>
             {testStatus === "valid" && <p className="text-xs text-success">✅ Key valid — Claude is ready</p>}
             {testStatus === "invalid" && <p className="text-xs text-danger">❌ Invalid key — check and try again</p>}
+            {testStatus === "no_credits" && <p className="text-xs text-warning">⚠️ Key works, but your Anthropic account has no credits</p>}
             {testStatus === "unreachable" && (
               <p className="text-xs text-warning">⚠️ Could not reach Anthropic — check your connection</p>
             )}
