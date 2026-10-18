@@ -58,6 +58,15 @@ export function AIRiskPanel({
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={onOpenSettings}
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 px-2.5"
+            title="Change your Anthropic API key"
+          >
+            🔑 Change API Key
+          </Button>
           {hasKey && (
             <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} size="sm">
               {mutation.isPending ? "Analysing…" : data ? "Re-analyse" : "Run AI analysis"}

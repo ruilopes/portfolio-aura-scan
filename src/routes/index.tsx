@@ -44,6 +44,7 @@ function DashboardPage() {
   const [ticker, setTicker] = useState("AAPL");
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsFocusKey, setSettingsFocusKey] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState<"local" | "USD">("local");
   const dashRef = useRef<HTMLDivElement>(null);
   const [settings] = useSettings();
@@ -214,7 +215,7 @@ function DashboardPage() {
 
         <div ref={dashRef} className="space-y-8">
           {mutation.isPending && <LoadingSkeleton />}
-          {result && <DashboardContent result={result} onOpenSettings={() => setSettingsOpen(true)} displayCurrency={displayCurrency} />}
+          {result && <DashboardContent result={result} onOpenSettings={() => { setSettingsFocusKey(true); setSettingsOpen(true); }} displayCurrency={displayCurrency} />}
           {!mutation.isPending && !result && (
             <div className="glass-card p-12 text-center">
               <div className="text-6xl mb-4">📊</div>
@@ -310,7 +311,7 @@ function DashboardPage() {
         </footer>
       </div>
 
-      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsModal open={settingsOpen} onOpenChange={(v) => { setSettingsOpen(v); if (!v) setSettingsFocusKey(false); }} focusAnthropicKey={settingsFocusKey} />
     </div>
   );
 }
