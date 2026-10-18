@@ -44,6 +44,7 @@ function DashboardPage() {
   const [ticker, setTicker] = useState("AAPL");
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsFocusKey, setSettingsFocusKey] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState<"local" | "USD">("local");
   const dashRef = useRef<HTMLDivElement>(null);
   const [settings] = useSettings();

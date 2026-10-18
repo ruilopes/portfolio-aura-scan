@@ -26,8 +26,15 @@ export function SettingsModal({ open, onOpenChange, focusAnthropicKey }: { open:
       setReveal(false);
       setChanging(false);
       setTestStatus(null);
+      if (focusAnthropicKey) {
+        const t = setTimeout(() => {
+          inputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+          inputRef.current?.focus({ preventScroll: true });
+        }, 120);
+        return () => clearTimeout(t);
+      }
     }
-  }, [open, settings.anthropicKey]);
+  }, [open, settings.anthropicKey, focusAnthropicKey]);
 
   const startChange = () => {
     setAnthropicDraft("");
