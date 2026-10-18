@@ -8,7 +8,7 @@ import { useSettings, maskKey, clearAnthropicKey } from "@/lib/settings";
 import { cacheClearAll } from "@/lib/cache";
 import { testAnthropicKey } from "@/lib/api/ai-risk.functions";
 
-export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function SettingsModal({ open, onOpenChange, focusAnthropicKey }: { open: boolean; onOpenChange: (v: boolean) => void; focusAnthropicKey?: boolean }) {
   const [settings, update] = useSettings();
   const [anthropicDraft, setAnthropicDraft] = useState("");
   const [reveal, setReveal] = useState(false);
