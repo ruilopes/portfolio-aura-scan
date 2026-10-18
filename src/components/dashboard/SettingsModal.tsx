@@ -200,7 +200,8 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={() => {
-              update({ anthropicKey: anthropicDraft.trim() });
+              // Keep the saved key when an edit is in progress with an empty draft
+              update({ anthropicKey: anthropicDraft.trim() || settings.anthropicKey });
               onOpenChange(false);
             }}
           >
