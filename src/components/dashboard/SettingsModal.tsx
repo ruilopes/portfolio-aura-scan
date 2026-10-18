@@ -117,12 +117,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
               >
                 {testing ? "…" : "Test"}
               </Button>
-              {changing && testStatus === "valid" && (
-                <Button size="sm" onClick={saveKey}>
-                  Save
-                </Button>
-              )}
-              {!changing && !hasSavedKey && anthropicDraft && testStatus === "valid" && (
+              {anthropicDraft.trim() && testStatus === "valid" && (changing || !hasSavedKey) && (
                 <Button size="sm" onClick={saveKey}>
                   Save
                 </Button>
