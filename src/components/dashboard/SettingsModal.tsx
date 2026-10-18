@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -12,17 +12,43 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
   const [settings, update] = useSettings();
   const [anthropicDraft, setAnthropicDraft] = useState("");
   const [reveal, setReveal] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [changing, setChanging] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<"valid" | "invalid" | "unreachable" | "no_credits" | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const hasSavedKey = !!settings.anthropicKey.trim();
+  const draftChanged = anthropicDraft.trim() !== settings.anthropicKey.trim();
 
   useEffect(() => {
     if (open) {
       setAnthropicDraft(settings.anthropicKey);
       setReveal(false);
+      setChanging(false);
       setTestStatus(null);
     }
   }, [open, settings.anthropicKey]);
+
+  const startChange = () => {
+    setAnthropicDraft("");
+    setChanging(true);
+    setTestStatus(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const cancelChange = () => {
+    setAnthropicDraft(settings.anthropicKey);
+    setChanging(false);
+    setReveal(false);
+    setTestStatus(null);
+  };
+
+  const saveKey = () => {
+    update({ anthropicKey: anthropicDraft.trim() });
+    setChanging(false);
+    setReveal(false);
+    setTestStatus(null);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,10 +65,10 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
             <div className="flex gap-2 items-center">
               <div className="relative flex-1">
                 <Input
+                  ref={inputRef}
                   type="text"
-                  value={editing || reveal ? anthropicDraft : maskKey(anthropicDraft)}
-                  onFocus={() => setEditing(true)}
-                  onBlur={() => setEditing(false)}
+                  readOnly={hasSavedKey && !changing}
+                  value={reveal && !changing ? anthropicDraft : changing || !hasSavedKey ? anthropicDraft : maskKey(anthropicDraft)}
                   onChange={(e) => {
                     setAnthropicDraft(e.target.value);
                     setTestStatus(null);
@@ -52,15 +78,27 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
                   autoComplete="off"
                   spellCheck={false}
                 />
-                <button
-                  type="button"
-                  onClick={() => setReveal((r) => !r)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-sm opacity-70 hover:opacity-100"
-                  aria-label={reveal ? "Hide key" : "Show key"}
-                >
-                  👁
-                </button>
+                {!changing && anthropicDraft && (
+                  <button
+                    type="button"
+                    onClick={() => setReveal((r) => !r)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-sm opacity-70 hover:opacity-100"
+                    aria-label={reveal ? "Hide key" : "Show key"}
+                  >
+                    👁
+                  </button>
+                )}
               </div>
+              {hasSavedKey && !changing && (
+                <Button size="sm" variant="outline" onClick={startChange}>
+                  Change
+                </Button>
+              )}
+              {changing && (
+                <Button size="sm" variant="outline" onClick={cancelChange}>
+                  Cancel
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -79,6 +117,11 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
               >
                 {testing ? "…" : "Test"}
               </Button>
+              {anthropicDraft.trim() && testStatus === "valid" && (changing || !hasSavedKey) && (
+                <Button size="sm" onClick={saveKey}>
+                  Save
+                </Button>
+              )}
               {anthropicDraft && (
                 <Button
                   size="sm"
@@ -86,6 +129,7 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
                   onClick={() => {
                     clearAnthropicKey();
                     setAnthropicDraft("");
+                    setChanging(false);
                     setTestStatus(null);
                     update({ anthropicKey: "" });
                   }}
@@ -156,7 +200,8 @@ export function SettingsModal({ open, onOpenChange }: { open: boolean; onOpenCha
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={() => {
-              update({ anthropicKey: anthropicDraft.trim() });
+              // Keep the saved key when an edit is in progress with an empty draft
+              update({ anthropicKey: anthropicDraft.trim() || settings.anthropicKey });
               onOpenChange(false);
             }}
           >
